@@ -7,7 +7,7 @@ import {
   UserStory,
 } from '../../core/services/openproject.service';
 import { AiService, TestCase, TestStep } from '../../core/services/ai.service';
-import { SquashService, SquashProject, PushResponse } from '../../core/services/squash.service';
+import { SquashService, SquashProject, PushResponse, OpTaskPayload } from '../../core/services/squash.service';
 
 const PAGE_SIZE = 8;
 
@@ -71,6 +71,12 @@ export class ProjectsComponent implements OnInit {
   squashConfigured = false;
   squashConfigError = '';
   squashConnecting = false;
+
+  // OpenProject task on push
+  createOpTaskOnPush = false;
+  opTaskHours = '';
+  opTaskComment = '';
+  opTaskResult: { taskUrl?: string; subject?: string; hoursLogged?: string; error?: string } | null = null;
 
   // Squash push
   squashProjects: SquashProject[] = [];
@@ -218,6 +224,10 @@ export class ProjectsComponent implements OnInit {
     this.squashFolderName = '';
     this.selectedTcIds = new Set();
     this.selectedTc = null;
+    this.createOpTaskOnPush = false;
+    this.opTaskHours = '';
+    this.opTaskComment = '';
+    this.opTaskResult = null;
     this.loadExistingTestCases(us.id);
   }
 
@@ -524,11 +534,27 @@ export class ProjectsComponent implements OnInit {
     this.pushingToSquash = true;
     this.pushResult = null;
     this.pushError = '';
+    this.opTaskResult = null;
+
+    let opTask: OpTaskPayload | undefined;
+    if (this.createOpTaskOnPush && this.selectedUs && this.selectedProject) {
+      opTask = {
+        opUrl: this.opUrl,
+        opToken: this.opToken,
+        opProjectId: this.selectedProject.id,
+        usId: this.selectedUs.id,
+        usTitle: this.selectedUs.subject,
+        hours: this.opTaskHours ? Number(this.opTaskHours) : undefined,
+        comment: this.opTaskComment || undefined,
+      };
+    }
+
     const tcIds = Array.from(this.selectedTcIds);
-    this.squashService.push(tcIds, this.selectedSquashProjectId, this.squashFolderName || undefined).subscribe({
+    this.squashService.push(tcIds, this.selectedSquashProjectId, this.squashFolderName || undefined, opTask).subscribe({
       next: (result) => {
         this.pushingToSquash = false;
         this.pushResult = result;
+        this.opTaskResult = result.opTask || null;
         this.squashPanelOpen = false;
         this.selectedTcIds = new Set();
         this.loadExistingTestCases(this.selectedUs!.id);

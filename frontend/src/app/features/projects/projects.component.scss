@@ -1283,6 +1283,55 @@
   &:focus { border-color: #6366f1; }
 }
 
+.squash-op-section {
+  padding: 0.75rem 1rem 0.5rem;
+  border-top: 0.5px solid #f0f0f0;
+}
+
+.squash-op-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.83rem;
+  color: #444;
+  cursor: pointer;
+
+  input[type="checkbox"] { cursor: pointer; accent-color: #6366f1; }
+}
+
+.squash-op-fields {
+  margin-top: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.op-task-result {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.9rem;
+  margin-bottom: 0.5rem;
+  background: #f0fdf4;
+  border: 0.5px solid #bbf7d0;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: #166534;
+
+  a { color: #166534; text-decoration: underline; }
+
+  &.op-task-warn {
+    background: #fffbeb;
+    border-color: #fde68a;
+    color: #92400e;
+  }
+}
+
+.op-task-hours {
+  color: #6366f1;
+  font-weight: 500;
+}
+
 .squash-panel-footer {
   display: flex;
   justify-content: flex-end;

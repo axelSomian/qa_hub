@@ -54,6 +54,70 @@ export const getUserStories = async (
       }));
   };
 
+// Convertit un nombre décimal d'heures en durée ISO 8601 (ex: 2.5 → "PT2H30M")
+const hoursToIso = (hours: number): string => {
+  const h = Math.floor(hours);
+  const m = Math.round((hours - h) * 60);
+  return m > 0 ? `PT${h}H${m}M` : `PT${h}H`;
+};
+
+// Créer une tâche "Test Execution" dans OpenProject liée à une US
+export const createOpTask = async (
+  baseUrl: string,
+  token: string,
+  projectId: number,
+  usId: number,
+  usTitle: string
+): Promise<{ id: number; subject: string; url: string }> => {
+  const res = await fetch(`${baseUrl}/api/v3/work_packages`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({
+      subject: `Test Execution — ${usTitle}`,
+      _links: {
+        project: { href: `/api/v3/projects/${projectId}` },
+        type:    { href: '/api/v3/types/1' },
+        parent:  { href: `/api/v3/work_packages/${usId}` },
+      },
+    }),
+  });
+  const data: any = await res.json();
+  if (!res.ok) throw new Error(data.message || `OpenProject WP error ${res.status}`);
+  return {
+    id: data.id,
+    subject: data.subject,
+    url: `${baseUrl}/work_packages/${data.id}`,
+  };
+};
+
+// Loguer le temps passé sur un work package
+export const createTimeEntry = async (
+  baseUrl: string,
+  token: string,
+  projectId: number,
+  workPackageId: number,
+  hours: number,
+  comment: string
+): Promise<{ id: number; hours: string }> => {
+  const today = new Date().toISOString().split('T')[0];
+  const res = await fetch(`${baseUrl}/api/v3/time_entries`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({
+      hours: hoursToIso(hours),
+      spentOn: today,
+      comment: { raw: comment },
+      _links: {
+        workPackage: { href: `/api/v3/work_packages/${workPackageId}` },
+        project:     { href: `/api/v3/projects/${projectId}` },
+      },
+    }),
+  });
+  const data: any = await res.json();
+  if (!res.ok) throw new Error(data.message || `OpenProject TimeEntry error ${res.status}`);
+  return { id: data.id, hours: data.hours };
+};
+
 // Tester la connexion
 export const testConnection = async (baseUrl: string, token: string) => {
   const res = await fetch(`${baseUrl}/api/v3/users/me`, {
