@@ -1,0 +1,546 @@
+<div class="page">
+
+  <!-- CONNEXION -->
+  <div class="connect-wrap" *ngIf="!isConnected">
+    <div class="connect-card">
+      <div class="connect-logo">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+          <path d="M8 16h16M16 8v16" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <span>QA Hub</span>
+      </div>
+      <h1>Connexion OpenProject</h1>
+      <p class="subtitle">Connectez votre instance pour importer vos User Stories</p>
+
+      <div class="field">
+        <label>URL de l'instance</label>
+        <input type="text" [(ngModel)]="opUrl" placeholder="https://mon-instance.openproject.com"/>
+      </div>
+      <div class="field">
+        <label>Token API</label>
+        <input type="password" [(ngModel)]="opToken" placeholder="••••••••••••••••"/>
+      </div>
+
+      <div class="error-msg" *ngIf="connectionError">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="6" stroke="currentColor" stroke-width="1.2"/><path d="M7 4v3.5M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+        {{ connectionError }}
+      </div>
+
+      <button class="btn-connect" (click)="connect()" [disabled]="connectionLoading || !opUrl || !opToken">
+        <span *ngIf="!connectionLoading">Se connecter</span>
+        <span *ngIf="connectionLoading" class="spinner"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="dashboard" *ngIf="isConnected">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <svg width="22" height="22" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+            <path d="M8 16h16M16 8v16" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <span>QA Hub</span>
+        </div>
+        <button class="btn-disconnect" (click)="disconnect()" title="Déconnecter">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 2H2v10h3M9 4l3 3-3 3M12 7H6" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+
+      <!-- Squash TM config -->
+      <div class="squash-sidebar-block">
+        <p class="sidebar-label">Squash TM</p>
+
+        <!-- Non configuré -->
+        <div class="squash-sidebar-form" *ngIf="!squashConfigured">
+          <input class="squash-sidebar-input" type="text" [(ngModel)]="squashUrlInput"
+                 placeholder="http://squash:8080/squash"
+                 autocomplete="off" autocorrect="off" spellcheck="false"/>
+          <span class="squash-url-hint">⚠ Utilise le nom Docker, pas localhost</span>
+          <input class="squash-sidebar-input" type="password" [(ngModel)]="squashTokenInput"
+                 placeholder="user:password"
+                 autocomplete="new-password"/>
+          <button class="btn-squash-connect"
+                  (click)="configureSquash()"
+                  [disabled]="!squashUrlInput.trim() || !squashTokenInput.trim() || squashConnecting">
+            <span class="spinner sm" *ngIf="squashConnecting"></span>
+            <span *ngIf="!squashConnecting">Connecter</span>
+          </button>
+          <span class="squash-config-error" *ngIf="squashConfigError">{{ squashConfigError }}</span>
+        </div>
+
+        <!-- Configuré -->
+        <div class="squash-sidebar-connected" *ngIf="squashConfigured">
+          <span class="squash-dot-green"></span>
+          <span class="squash-url-label" title="{{ squashUrlInput }}">{{ squashUrlDisplay }}</span>
+          <button class="btn-squash-disconnect" (click)="disconnectSquash()" title="Déconnecter Squash">×</button>
+        </div>
+      </div>
+
+      <p class="sidebar-label">Projets</p>
+
+      <div class="loading-projects" *ngIf="projectsLoading">
+        <span class="spinner sm"></span> Chargement...
+      </div>
+
+      <ul class="project-list" *ngIf="!projectsLoading">
+        <li *ngFor="let p of projects"
+            [class.active]="selectedProject?.id === p.id"
+            (click)="selectProject(p)">
+          <span class="p-dot"></span>
+          <span class="p-name">{{ p.name }}</span>
+          <span class="p-id">#{{ p.id }}</span>
+        </li>
+      </ul>
+    </aside>
+
+    <!-- Main -->
+    <main class="main">
+
+      <!-- ── VUE : US LIST ─────────────────────────── -->
+      <ng-container *ngIf="currentView === 'us-list'">
+
+        <div class="empty-state" *ngIf="!selectedProject">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none"><rect x="8" y="10" width="24" height="22" rx="4" stroke="currentColor" stroke-width="1.5"/><path d="M14 18h12M14 23h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <p>Sélectionne un projet</p>
+        </div>
+
+        <div class="us-panel" *ngIf="selectedProject">
+          <div class="panel-top">
+            <div>
+              <h2>{{ selectedProject.name }}</h2>
+              <span class="us-count" *ngIf="!usLoading">{{ filteredStories.length }} / {{ userStories.length }} user stories</span>
+            </div>
+            <div class="search-wrap">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10 10l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <input type="text" placeholder="Rechercher..." [(ngModel)]="searchTerm" (ngModelChange)="onSearch()"/>
+            </div>
+          </div>
+
+          <div class="us-loading" *ngIf="usLoading">
+            <span class="spinner sm"></span> Chargement des user stories...
+          </div>
+
+          <div class="us-list" *ngIf="!usLoading">
+            <div class="us-card" *ngFor="let us of pagedStories" [class.has-tc]="tcCountMap.has(us.id)">
+              <div class="us-head">
+                <p class="us-title">{{ us.subject }}</p>
+                <div class="us-head-right">
+                  <span class="tc-badge" *ngIf="tcCountMap.has(us.id)" title="Cas de test générés">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                    {{ tcCountMap.get(us.id) }} CT
+                  </span>
+                  <span class="us-id">US #{{ us.id }}</span>
+                </div>
+              </div>
+              <div class="us-meta">
+                <span class="badge status">{{ us.status || 'Non défini' }}</span>
+                <span class="badge priority" [ngClass]="priorityClass(us.priority)">{{ us.priority || 'Non définie' }}</span>
+              </div>
+              <p class="us-desc" *ngIf="us.description">{{ us.description | slice:0:180 }}{{ us.description.length > 180 ? '…' : '' }}</p>
+              <p class="us-desc us-desc-muted" *ngIf="!us.description">Aucun descriptif disponible.</p>
+              <div class="us-footer">
+                <span class="us-assignee" *ngIf="us.assignee; else noAssignee">
+                  <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="4" r="2.5" stroke="currentColor" stroke-width="1.2"/><path d="M1.5 10.5c0-2.485 2.015-4.5 4.5-4.5s4.5 2.015 4.5 4.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  {{ us.assignee }}
+                </span>
+                <ng-template #noAssignee><span class="us-assignee us-assignee-empty">Non assignée</span></ng-template>
+                <div class="us-footer-actions">
+                  <button class="btn-preview" (click)="openUsPreview(us, $event)" title="Voir les détails de la US">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
+                    Détails
+                  </button>
+                  <button class="btn-generate" (click)="openTcScreen(us)">Voir CT</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="empty-search" *ngIf="pagedStories.length === 0">
+              Aucune user story trouvée pour "{{ searchTerm }}"
+            </div>
+          </div>
+
+          <div class="pagination" *ngIf="!usLoading && totalPages > 1">
+            <button (click)="goToPage(currentPage - 1)" [disabled]="currentPage === 1">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 11L5 7l4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+            <span class="page-info">{{ currentPage }} / {{ totalPages }}</span>
+            <button (click)="goToPage(currentPage + 1)" [disabled]="currentPage === totalPages">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            </button>
+          </div>
+        </div>
+
+      </ng-container>
+
+      <!-- ── VUE : TC LIST ─────────────────────────── -->
+      <ng-container *ngIf="currentView === 'tc-list'">
+        <div class="tc-screen">
+
+          <div class="tc-screen-header">
+            <button class="btn-back" (click)="backToUsList()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 11L5 7l4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Retour
+            </button>
+            <div class="tc-screen-title">
+              <h2>{{ selectedUs?.subject }}</h2>
+              <span class="us-id-badge">US #{{ selectedUs?.id }}</span>
+            </div>
+            <div class="tc-screen-actions">
+              <button class="btn-manual" (click)="addManualTestCase()" [disabled]="addingManual || generating" title="Ajouter un CT manuellement">
+                <span class="spinner sm" *ngIf="addingManual"></span>
+                <svg *ngIf="!addingManual" width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                CT manuel
+              </button>
+              <button class="btn-criteria" (click)="criteriaOpen = !criteriaOpen" [class.active]="criteriaOpen" title="Générer un CT spécifique">
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4.5v3M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                CT spécifique
+              </button>
+              <button class="btn-ai" (click)="generate()" [disabled]="generating || addingManual">
+                <span class="spinner sm" *ngIf="generating && !specificCriteria"></span>
+                {{ (generating && !specificCriteria) ? 'Génération...' : (testCases.length > 0 ? 'Régénérer CT' : 'Générer CT') }}
+              </button>
+              <button class="btn-squash"
+                      (click)="openSquashPush()"
+                      *ngIf="testCases.length > 0"
+                      [class.active]="squashPanelOpen"
+                      [disabled]="selectedTcIds.size === 0"
+                      [title]="selectedTcIds.size === 0 ? 'Sélectionner des CT d\'abord' : 'Injecter dans Squash TM'">
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                Injecter{{ selectedTcIds.size > 0 ? ' (' + selectedTcIds.size + ')' : '' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Panneau critère spécifique -->
+          <div class="criteria-panel" *ngIf="criteriaOpen">
+            <div class="criteria-header">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4.5v3M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+              <span>Critère spécifique</span>
+              <span class="criteria-hint">Le CT généré sera ajouté aux existants sans les supprimer</span>
+            </div>
+            <textarea class="criteria-input"
+                      [(ngModel)]="specificCriteria"
+                      placeholder="Ex : Tester le comportement quand l'utilisateur saisit une valeur négative dans le champ montant..."
+                      rows="3"></textarea>
+            <div class="criteria-footer">
+              <button class="btn-ai btn-specific" (click)="generateSpecific()" [disabled]="!specificCriteria.trim() || generating">
+                <span class="spinner sm" *ngIf="generating && specificCriteria"></span>
+                <svg *ngIf="!(generating && specificCriteria)" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                {{ (generating && specificCriteria) ? 'Génération...' : 'Générer ce CT' }}
+              </button>
+            </div>
+          </div>
+
+          <!-- Panneau injection Squash -->
+          <div class="squash-panel" *ngIf="squashPanelOpen">
+            <div class="squash-panel-header">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>Injecter {{ selectedTcIds.size }} CT dans Squash TM</span>
+            </div>
+            <div class="squash-panel-body">
+              <div class="squash-field">
+                <label class="squash-label">Projet Squash</label>
+                <span *ngIf="squashProjectsLoading" class="squash-loading"><span class="spinner sm"></span> Chargement...</span>
+                <select class="squash-select" [(ngModel)]="selectedSquashProjectId" *ngIf="!squashProjectsLoading && squashProjects.length > 0">
+                  <option [ngValue]="null" disabled>Choisir un projet</option>
+                  <option *ngFor="let p of squashProjects" [ngValue]="p.id">{{ p.name }}</option>
+                </select>
+                <span *ngIf="!squashProjectsLoading && squashProjects.length === 0 && !pushError" class="squash-empty">Aucun projet trouvé</span>
+              </div>
+              <div class="squash-field">
+                <label class="squash-label">Dossier <span class="squash-optional">(optionnel)</span></label>
+                <input class="squash-input" type="text" [(ngModel)]="squashFolderName" placeholder="Ex : Sprint 12, Régression V2…"/>
+              </div>
+            </div>
+            <div class="squash-panel-footer">
+              <button class="btn-push-confirm" (click)="pushToSquash()" [disabled]="!selectedSquashProjectId || pushingToSquash">
+                <span class="spinner sm" *ngIf="pushingToSquash"></span>
+                <svg *ngIf="!pushingToSquash" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                {{ pushingToSquash ? 'Injection en cours…' : 'Injecter' }}
+              </button>
+            </div>
+            <div class="push-error" *ngIf="pushError">{{ pushError }}</div>
+          </div>
+
+          <!-- Résultat push Squash -->
+          <div class="push-result" *ngIf="pushResult">
+            <div class="push-result-pushed" *ngIf="pushResult.pushed.length > 0">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              <span>{{ pushResult.pushed.length }} CT envoyé(s) vers Squash TM :</span>
+              <span class="push-result-titles">{{ titlesOf(pushResult.pushed) }}</span>
+            </div>
+            <div class="push-result-blocked" *ngIf="pushResult.blocked.length > 0">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M4.5 4.5l5 5M9.5 4.5l-5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+              <span>{{ pushResult.blocked.length }} CT déjà synchronisé(s), non renvoyé(s) :</span>
+              <span class="push-result-titles">{{ titlesOf(pushResult.blocked) }}</span>
+            </div>
+            <div class="push-result-none" *ngIf="pushResult.pushed.length === 0 && pushResult.blocked.length > 0">
+              Tous les CT sont déjà synchronisés avec Squash TM.
+            </div>
+            <button class="push-result-close" (click)="pushResult = null">×</button>
+          </div>
+          <div class="gen-error" *ngIf="generationError">{{ generationError }}</div>
+
+          <!-- Grille CT -->
+          <div class="tc-grid-wrap" *ngIf="!generating && testCases.length > 0">
+            <div class="tc-grid-toolbar">
+              <label class="select-all-label">
+                <input type="checkbox"
+                       [checked]="selectedTcIds.size === testCases.length && testCases.length > 0"
+                       [indeterminate]="selectedTcIds.size > 0 && selectedTcIds.size < testCases.length"
+                       (change)="selectAllTc()"/>
+                Tout sélectionner
+              </label>
+              <span class="tc-selection-count" *ngIf="selectedTcIds.size > 0">
+                {{ selectedTcIds.size }} sélectionné(s)
+              </span>
+            </div>
+            <div class="tc-grid">
+              <div class="tc-list-card"
+                   *ngFor="let tc of testCases; let i = index"
+                   [class.tc-selected]="tc.id && selectedTcIds.has(tc.id)"
+                   (click)="openTcDetail(tc)">
+                <div class="tc-card-check" (click)="toggleTcSelection(tc, $event)">
+                  <input type="checkbox"
+                         [checked]="tc.id && selectedTcIds.has(tc.id)"/>
+                </div>
+                <div class="tc-card-head">
+                  <span class="tc-num">CT{{ i + 1 }}</span>
+                  <span class="tc-priority" [class]="'prio-' + tc.priority">{{ tc.priority }}</span>
+                  <span class="tc-status" [class]="'status-' + tc.status">{{ tc.status || 'draft' }}</span>
+                  <span class="squash-synced" *ngIf="tc.squash_id" title="Synchronisé Squash">S</span>
+                </div>
+                <p class="tc-card-title">{{ tc.title }}</p>
+                <p class="tc-card-meta">{{ tc.steps ? tc.steps.length : 0 }} étapes</p>
+              </div>
+            </div>
+          </div>
+
+          <div class="tc-generating" *ngIf="generating">
+            <span class="spinner sm"></span>
+            <span>Génération en cours...</span>
+          </div>
+
+          <div class="tc-empty" *ngIf="!generating && testCases.length === 0">
+            <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><rect x="6" y="4" width="20" height="24" rx="4" stroke="currentColor" stroke-width="1.5"/><path d="M11 11h10M11 16h7M11 21h5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <p>Aucun cas de test.<br>Clique sur "Générer CT" pour commencer.</p>
+          </div>
+
+        </div>
+      </ng-container>
+
+      <!-- ── VUE : TC DETAIL ───────────────────────── -->
+      <ng-container *ngIf="currentView === 'tc-detail' && selectedTc">
+        <div class="tc-detail-screen">
+
+          <div class="tc-detail-header">
+            <button class="btn-back" (click)="backToTcList()">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M9 11L5 7l4-4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              Retour aux CT
+            </button>
+            <div class="tc-detail-badges">
+              <span class="tc-status" [class]="'status-' + selectedTc.status" (click)="toggleStatus(selectedTc)" title="Cliquer pour changer">{{ selectedTc.status || 'draft' }}</span>
+              <span class="squash-synced" *ngIf="selectedTc.squash_id" title="Synchronisé Squash">S</span>
+              <span class="save-indicator saving" *ngIf="tcSaving"><span class="spinner sm"></span></span>
+              <span class="save-indicator saved" *ngIf="tcSaved">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+              </span>
+              <button class="btn-tc-delete" (click)="deleteTestCase(selectedTc)" title="Supprimer ce CT">
+                <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                Supprimer
+              </button>
+            </div>
+          </div>
+
+          <!-- Titre éditable -->
+          <h2 class="tc-detail-title"
+              contenteditable="true"
+              (blur)="saveTcField('title', $event.target)"
+              spellcheck="false">{{ selectedTc.title }}</h2>
+
+          <div class="tc-detail-body">
+
+            <!-- Criticité -->
+            <div class="tc-section tc-meta-row">
+              <span class="section-label-inline">Criticité</span>
+              <div class="priority-selector">
+                <button *ngFor="let p of priorities"
+                        class="prio-btn"
+                        [class]="'prio-' + p"
+                        [class.active]="selectedTc.priority === p"
+                        (click)="savePriority(p)">{{ p }}</button>
+              </div>
+            </div>
+
+            <!-- Préconditions éditables -->
+            <div class="tc-section">
+              <h4 class="section-label">Préconditions</h4>
+              <p class="tc-prereq-text"
+                 contenteditable="true"
+                 (blur)="saveTcField('preconditions', $event.target)"
+                 [class.empty-field]="!selectedTc.preconditions"
+                 spellcheck="false">{{ selectedTc.preconditions || 'Cliquer pour ajouter des préconditions…' }}</p>
+            </div>
+
+            <div class="tc-section">
+              <div class="steps-header">
+                <h4 class="section-label">Étapes <span class="steps-count">{{ selectedTc.steps ? selectedTc.steps.length : 0 }}</span></h4>
+                <div class="format-toolbar">
+                  <button class="fmt-btn" (mousedown)="$event.preventDefault(); formatText('bold')" title="Gras"><b>B</b></button>
+                  <button class="fmt-btn" (mousedown)="$event.preventDefault(); formatText('italic')" title="Italique"><i>I</i></button>
+                  <button class="fmt-btn" (mousedown)="$event.preventDefault(); formatText('underline')" title="Souligné"><u>U</u></button>
+                  <span class="fmt-sep"></span>
+                  <button class="fmt-btn" (mousedown)="$event.preventDefault(); formatText('insertUnorderedList')" title="Liste">&#8226;&#8212;</button>
+                  <button class="fmt-btn" (mousedown)="$event.preventDefault(); formatText('insertOrderedList')" title="Liste numérotée">1.</button>
+                </div>
+              </div>
+
+              <table class="steps-table">
+                <thead>
+                  <tr>
+                    <th class="col-num">#</th>
+                    <th class="col-action">Action</th>
+                    <th class="col-result">Résultat attendu</th>
+                    <th class="col-save"></th>
+                    <th class="col-del"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Insertion avant le premier step -->
+                  <tr class="insert-row" *ngIf="selectedTc && (selectedTc.steps?.length || 0) > 0">
+                    <td colspan="5">
+                      <button class="btn-insert-step" (click)="insertStep(-1)" [disabled]="addingStepAt !== null" title="Insérer une étape au début">
+                        <span class="spinner sm" *ngIf="addingStepAt === -1"></span>
+                        <svg *ngIf="addingStepAt !== -1" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        Insérer une étape
+                      </button>
+                    </td>
+                  </tr>
+
+                  <ng-container *ngFor="let step of selectedTc.steps; let j = index">
+
+                    <!-- Ligne step -->
+                    <tr class="step-row">
+                      <td class="col-num">{{ j + 1 }}</td>
+                      <td class="col-action">
+                        <div class="step-cell"
+                             contenteditable="true"
+                             [innerHTML]="step.action"
+                             (blur)="saveStep(step, 'action', $event.target)"
+                             spellcheck="false"></div>
+                      </td>
+                      <td class="col-result">
+                        <div class="step-cell"
+                             contenteditable="true"
+                             [innerHTML]="step.expected_result || step.expected"
+                             (blur)="saveStep(step, 'expected_result', $event.target)"
+                             spellcheck="false"></div>
+                      </td>
+                      <td class="col-save">
+                        <span class="save-indicator saving" *ngIf="savingStepId === step.id">
+                          <span class="spinner sm"></span>
+                        </span>
+                        <span class="save-indicator saved" *ngIf="savedStepId === step.id">
+                          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </span>
+                      </td>
+                      <td class="col-del">
+                        <button class="btn-del-step" (click)="removeStep(step, j)" title="Supprimer cette étape">
+                          <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                        </button>
+                      </td>
+                    </tr>
+
+                    <!-- Séparateur d'insertion entre steps -->
+                    <tr class="insert-row">
+                      <td colspan="5">
+                        <button class="btn-insert-step" (click)="insertStep(j)" [disabled]="addingStepAt !== null" title="Insérer une étape ici">
+                          <span class="spinner sm" *ngIf="addingStepAt === j"></span>
+                          <svg *ngIf="addingStepAt !== j" width="10" height="10" viewBox="0 0 10 10" fill="none"><path d="M5 1v8M1 5h8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+                          Insérer une étape
+                        </button>
+                      </td>
+                    </tr>
+
+                  </ng-container>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="5" class="add-step-cell">
+                      <button class="btn-add-step" (click)="addStepAtEnd()" [disabled]="addingStepAt !== null">
+                        <span class="spinner sm" *ngIf="addingStepAt === (selectedTc.steps?.length ?? 0) + 1"></span>
+                        <svg *ngIf="addingStepAt !== (selectedTc.steps?.length ?? 0) + 1" width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                        Ajouter une étape
+                      </button>
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+
+          </div>
+        </div>
+      </ng-container>
+
+    </main>
+  </div>
+
+  <!-- ── MODALE US DETAIL ────────────────────────────────── -->
+  <div class="us-modal-backdrop" *ngIf="previewUs" (click)="closeUsPreview()">
+    <div class="us-modal" (click)="$event.stopPropagation()">
+
+      <div class="us-modal-header">
+        <div class="us-modal-id-row">
+          <span class="us-modal-id">US #{{ previewUs.id }}</span>
+          <div class="us-modal-badges">
+            <span class="badge status">{{ previewUs.status || 'Non défini' }}</span>
+            <span class="badge priority" [ngClass]="priorityClass(previewUs.priority)">{{ previewUs.priority || 'Non définie' }}</span>
+            <span class="us-modal-type" *ngIf="previewUs.type">{{ previewUs.type }}</span>
+          </div>
+        </div>
+        <h2 class="us-modal-title">{{ previewUs.subject }}</h2>
+        <div class="us-modal-assignee" *ngIf="previewUs.assignee">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="5" r="2.8" stroke="currentColor" stroke-width="1.3"/><path d="M2 12c0-2.761 2.239-5 5-5s5 2.239 5 5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          {{ previewUs.assignee }}
+        </div>
+        <button class="us-modal-close" (click)="closeUsPreview()" aria-label="Fermer">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="us-modal-divider"></div>
+
+      <div class="us-modal-body">
+        <div class="us-modal-desc-label">Description</div>
+        <div class="us-modal-desc" *ngIf="previewUs.description" [innerHTML]="previewUs.description"></div>
+        <div class="us-modal-desc us-modal-desc-empty" *ngIf="!previewUs.description">
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none"><rect x="3" y="3" width="14" height="14" rx="3" stroke="currentColor" stroke-width="1.3"/><path d="M7 10h6M7 7h4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+          Aucune description disponible.
+        </div>
+      </div>
+
+      <div class="us-modal-footer">
+        <span class="us-modal-tc-count" *ngIf="tcCountMap.has(previewUs.id)">
+          <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          {{ tcCountMap.get(previewUs.id) }} cas de test générés
+        </span>
+        <span class="us-modal-tc-count us-modal-tc-none" *ngIf="!tcCountMap.has(previewUs.id)">Aucun CT généré</span>
+        <div class="us-modal-footer-actions">
+          <button class="btn-modal-cancel" (click)="closeUsPreview()">Fermer</button>
+          <button class="btn-modal-tc" (click)="openTcFromPreview(previewUs)">
+            <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 7l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            {{ tcCountMap.has(previewUs.id) ? 'Voir les CT' : 'Générer les CT' }}
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+</div>
