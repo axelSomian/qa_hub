@@ -258,7 +258,7 @@
                 <input class="squash-input" type="text" [(ngModel)]="squashFolderName" placeholder="Ex : Sprint 12, Régression V2…"/>
               </div>
             </div>
-            <!-- Section tâche OpenProject -->
+            <!-- Tâche OpenProject optionnelle -->
             <div class="squash-op-section">
               <label class="squash-op-toggle">
                 <input type="checkbox" [(ngModel)]="createOpTaskOnPush"/>
@@ -266,8 +266,19 @@
               </label>
               <div class="squash-op-fields" *ngIf="createOpTaskOnPush">
                 <div class="squash-field">
-                  <label class="squash-label">Temps passé <span class="squash-optional">(heures, ex: 1.5)</span></label>
+                  <label class="squash-label">Criticité <span class="squash-required">*</span></label>
+                  <div class="op-priority-selector">
+                    <button *ngFor="let p of priorities" class="prio-btn" [class]="'prio-' + p"
+                            [class.active]="opTaskPriority === p" (click)="opTaskPriority = p">{{ p }}</button>
+                  </div>
+                </div>
+                <div class="squash-field">
+                  <label class="squash-label">Temps passé <span class="squash-required">*</span> <span class="squash-optional">(heures)</span></label>
                   <input class="squash-input" type="number" min="0" step="0.25" [(ngModel)]="opTaskHours" placeholder="ex: 2.5"/>
+                </div>
+                <div class="squash-field">
+                  <label class="squash-label">Temps estimé <span class="squash-required">*</span> <span class="squash-optional">(heures)</span></label>
+                  <input class="squash-input" type="number" min="0" step="0.25" [(ngModel)]="opTaskEstimatedHours" placeholder="ex: 4"/>
                 </div>
                 <div class="squash-field">
                   <label class="squash-label">Commentaire <span class="squash-optional">(optionnel)</span></label>
@@ -277,7 +288,7 @@
             </div>
 
             <div class="squash-panel-footer">
-              <button class="btn-push-confirm" (click)="pushToSquash()" [disabled]="!selectedSquashProjectId || pushingToSquash">
+              <button class="btn-push-confirm" (click)="pushToSquash()" [disabled]="!selectedSquashProjectId || pushingToSquash || !opFieldsValid">
                 <span class="spinner sm" *ngIf="pushingToSquash"></span>
                 <svg *ngIf="!pushingToSquash" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 {{ pushingToSquash ? 'Injection en cours…' : 'Injecter' }}

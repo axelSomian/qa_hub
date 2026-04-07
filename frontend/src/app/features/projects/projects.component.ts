@@ -74,9 +74,24 @@ export class ProjectsComponent implements OnInit {
 
   // OpenProject task on push
   createOpTaskOnPush = false;
+  opTaskPriority: 'low' | 'medium' | 'high' = 'medium';
   opTaskHours = '';
+  opTaskEstimatedHours = '';
   opTaskComment = '';
   opTaskResult: { taskUrl?: string; subject?: string; hoursLogged?: string; error?: string } | null = null;
+
+  get opFieldsValid(): boolean {
+    if (!this.createOpTaskOnPush) return true;
+    return !!this.opTaskHours && Number(this.opTaskHours) > 0
+        && !!this.opTaskEstimatedHours && Number(this.opTaskEstimatedHours) > 0;
+  }
+
+  private get selectedTcsPriority(): 'low' | 'medium' | 'high' {
+    const selected = this.testCases.filter(tc => tc.id && this.selectedTcIds.has(tc.id));
+    if (selected.some(tc => tc.priority === 'high')) return 'high';
+    if (selected.some(tc => tc.priority === 'medium')) return 'medium';
+    return 'low';
+  }
 
   // Squash push
   squashProjects: SquashProject[] = [];
@@ -516,6 +531,9 @@ export class ProjectsComponent implements OnInit {
     this.squashPanelOpen = !this.squashPanelOpen;
     this.pushResult = null;
     this.pushError = '';
+    if (this.squashPanelOpen) {
+      this.opTaskPriority = this.selectedTcsPriority;
+    }
     if (this.squashPanelOpen && this.squashProjects.length === 0) {
       this.squashProjectsLoading = true;
       this.squashService.getProjects().subscribe({
@@ -544,7 +562,9 @@ export class ProjectsComponent implements OnInit {
         opProjectId: this.selectedProject.id,
         usId: this.selectedUs.id,
         usTitle: this.selectedUs.subject,
-        hours: this.opTaskHours ? Number(this.opTaskHours) : undefined,
+        priority: this.opTaskPriority,
+        hours: Number(this.opTaskHours),
+        estimatedHours: Number(this.opTaskEstimatedHours),
         comment: this.opTaskComment || undefined,
       };
     }

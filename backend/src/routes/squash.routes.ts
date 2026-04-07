@@ -69,7 +69,9 @@ router.post('/push', async (req: Request, res: Response) => {
           opTask.opToken,
           Number(opTask.opProjectId),
           Number(opTask.usId),
-          opTask.usTitle || 'User Story'
+          opTask.usTitle || 'User Story',
+          opTask.priority || 'medium',
+          opTask.estimatedHours ? Number(opTask.estimatedHours) : undefined
         );
         opResult = { taskId: wp.id, taskUrl: wp.url, subject: wp.subject };
 

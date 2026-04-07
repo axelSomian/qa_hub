@@ -61,25 +61,38 @@ const hoursToIso = (hours: number): string => {
   return m > 0 ? `PT${h}H${m}M` : `PT${h}H`;
 };
 
+const priorityMap: Record<string, string> = {
+  high:   'Urgent',
+  medium: 'Normal',
+  low:    'Low',
+};
+
 // Créer une tâche "Test Execution" dans OpenProject liée à une US
 export const createOpTask = async (
   baseUrl: string,
   token: string,
   projectId: number,
   usId: number,
-  usTitle: string
+  usTitle: string,
+  priority: string = 'medium',
+  estimatedHours?: number
 ): Promise<{ id: number; subject: string; url: string }> => {
+  const body: any = {
+    subject: `Test Execution — ${usTitle}`,
+    description: { raw: `Criticité : ${priorityMap[priority] || 'Normal'}` },
+    estimatedTime: estimatedHours ? hoursToIso(estimatedHours) : undefined,
+    _links: {
+      project: { href: `/api/v3/projects/${projectId}` },
+      type:    { href: '/api/v3/types/1' },
+      parent:  { href: `/api/v3/work_packages/${usId}` },
+    },
+  };
+  if (!body.estimatedTime) delete body.estimatedTime;
+
   const res = await fetch(`${baseUrl}/api/v3/work_packages`, {
     method: 'POST',
     headers: getHeaders(token),
-    body: JSON.stringify({
-      subject: `Test Execution — ${usTitle}`,
-      _links: {
-        project: { href: `/api/v3/projects/${projectId}` },
-        type:    { href: '/api/v3/types/1' },
-        parent:  { href: `/api/v3/work_packages/${usId}` },
-      },
-    }),
+    body: JSON.stringify(body),
   });
   const data: any = await res.json();
   if (!res.ok) throw new Error(data.message || `OpenProject WP error ${res.status}`);

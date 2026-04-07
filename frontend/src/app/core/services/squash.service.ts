@@ -36,7 +36,9 @@ export interface OpTaskPayload {
   opProjectId: number;
   usId: number;
   usTitle: string;
-  hours?: number;
+  priority: 'low' | 'medium' | 'high';
+  hours: number;
+  estimatedHours: number;
   comment?: string;
 }
 
