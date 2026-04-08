@@ -23,35 +23,45 @@ export const getProjects = async (baseUrl: string, token: string) => {
   }));
 };
 
-// Récupérer les User Stories d'un projet
+// Récupérer toutes les User Stories d'un projet (pagination automatique)
 export const getUserStories = async (
     baseUrl: string,
     token: string,
     projectId: string
   ) => {
-    const res = await fetch(
-      `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=100`,
-      { headers: getHeaders(token) }
-    );
-  
-    if (!res.ok) {
-      throw new Error(`OpenProject error: ${res.status} ${res.statusText}`);
+    const PAGE_SIZE = 100;
+    let offset = 1;
+    let total = Infinity;
+    const all: any[] = [];
+
+    while (all.length < total) {
+      const res = await fetch(
+        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&offset=${offset}`,
+        { headers: getHeaders(token) }
+      );
+
+      if (!res.ok) {
+        throw new Error(`OpenProject error: ${res.status} ${res.statusText}`);
+      }
+
+      const data: any = await res.json();
+      total = data.total ?? 0;
+      const elements: any[] = data._embedded?.elements ?? [];
+      all.push(...elements);
+
+      if (elements.length < PAGE_SIZE) break;
+      offset += PAGE_SIZE;
     }
-  
-    const data: any = await res.json();
-  
-    // Filtre uniquement les "User story"
-    return data._embedded.elements
-     
-      .map((us: any) => ({
-        id: us.id,
-        subject: us.subject,
-        description: us.description?.raw || '',
-        status: us._links?.status?.title || '',
-        priority: us._links?.priority?.title || '',
-        type: us._links?.type?.title || '',
-        assignee: us._links?.assignee?.title || null,
-      }));
+
+    return all.map((us: any) => ({
+      id: us.id,
+      subject: us.subject,
+      description: us.description?.raw || '',
+      status: us._links?.status?.title || '',
+      priority: us._links?.priority?.title || '',
+      type: us._links?.type?.title || '',
+      assignee: us._links?.assignee?.title || null,
+    }));
   };
 
 // Convertit un nombre décimal d'heures en durée ISO 8601 (ex: 2.5 → "PT2H30M")
