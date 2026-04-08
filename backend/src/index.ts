@@ -5,6 +5,7 @@ import { testConnection, query } from './db';
 import openprojectRoutes from './routes/openproject.routes';
 import aiRoutes from './routes/ai.routes';
 import squashRoutes from './routes/squash.routes';
+import executionRoutes from './routes/execution.routes';
 
 dotenv.config();
 
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use('/api/openproject', openprojectRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/squash', squashRoutes);
+app.use('/api/executions', executionRoutes);
 
 // Health check API
 app.get('/health', (req, res) => {

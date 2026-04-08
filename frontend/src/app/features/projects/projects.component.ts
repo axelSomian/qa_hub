@@ -8,13 +8,15 @@ import {
 } from '../../core/services/openproject.service';
 import { AiService, TestCase, TestStep } from '../../core/services/ai.service';
 import { SquashService, SquashProject, PushResponse, OpTaskPayload } from '../../core/services/squash.service';
+import { ExecutionService, ExecutionSession, Execution, ExecutionStep, SessionReport } from '../../core/services/execution.service';
+import { SafeUrlPipe } from '../../core/pipes/safe-url.pipe';
 
 const PAGE_SIZE = 8;
 
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SafeUrlPipe],
   templateUrl: './projects.component.html',
   styleUrl: './projects.component.scss',
 })
@@ -41,7 +43,7 @@ export class ProjectsComponent implements OnInit {
   totalPages = 1;
 
   // Navigation entre vues
-  currentView: 'us-list' | 'tc-list' | 'tc-detail' = 'us-list';
+  currentView: 'us-list' | 'tc-list' | 'tc-detail' | 'execution' | 'execution-report' = 'us-list';
   selectedUs: UserStory | null = null;
   selectedTc: TestCase | null = null;
 
@@ -102,6 +104,29 @@ export class ProjectsComponent implements OnInit {
     return 'low';
   }
 
+  // ── Exécution ──────────────────────────────────────
+  execSession: ExecutionSession | null = null;
+  execQueue: Execution[] = [];          // liste ordonnée des executions
+  execCurrentIdx = 0;                   // index TC courant
+  execStepIdx = 0;                      // index step courant
+  execStepResults = new Map<string, { status: string; comment: string }>();
+  execIframeUrl = 'about:blank';
+  execCommentOpen = false;
+  execPendingStatus: 'failed' | 'blocked' | null = null;
+  execPendingComment = '';
+  execLaunching = false;
+  execReport: SessionReport | null = null;
+  execSquashProjectId: number | null = null;
+
+  get execCurrentItem(): Execution | null { return this.execQueue[this.execCurrentIdx] ?? null; }
+  get execCurrentTc(): any { return this.execCurrentItem?.tc ?? null; }
+  get execCurrentSteps(): any[] { return this.execCurrentTc?.steps ?? []; }
+  get execCurrentStep(): any { return this.execCurrentSteps[this.execStepIdx] ?? null; }
+  get execProgress(): number {
+    const done = this.execQueue.filter(e => e.global_status !== 'pending').length;
+    return this.execQueue.length ? Math.round((done / this.execQueue.length) * 100) : 0;
+  }
+
   // Squash push
   squashProjects: SquashProject[] = [];
   squashProjectsLoading = false;
@@ -123,7 +148,8 @@ export class ProjectsComponent implements OnInit {
   constructor(
     private opService: OpenprojectService,
     private aiService: AiService,
-    private squashService: SquashService
+    private squashService: SquashService,
+    private executionService: ExecutionService
   ) {}
 
   ngOnInit(): void {
@@ -614,6 +640,125 @@ export class ProjectsComponent implements OnInit {
 
   titlesOf(items: { title: string }[]): string {
     return items.map(i => `"${i.title}"`).join(', ');
+  }
+
+  // ── Lancement exécution ───────────────────────────
+
+  launchExecution(): void {
+    if (this.selectedTcIds.size === 0) return;
+    this.execLaunching = true;
+    const tcIds = Array.from(this.selectedTcIds);
+    const sessionName = `Exécution — ${this.selectedUs?.subject || 'Session'} — ${new Date().toLocaleDateString('fr-FR')}`;
+    const squashProjectId = this.selectedSquashProjectId ?? undefined;
+
+    this.executionService.createSession(tcIds, sessionName, squashProjectId).subscribe({
+      next: ({ session, executions }) => {
+        this.execSession = session;
+        this.execQueue = executions;
+        this.execCurrentIdx = 0;
+        this.execStepIdx = 0;
+        this.execStepResults = new Map();
+        this.execIframeUrl = 'about:blank';
+        this.execCommentOpen = false;
+        this.execPendingStatus = null;
+        this.execPendingComment = '';
+        this.execLaunching = false;
+        this.currentView = 'execution';
+      },
+      error: (err: any) => {
+        this.execLaunching = false;
+        this.pushError = err?.error?.error || 'Erreur lors du lancement de la session';
+      },
+    });
+  }
+
+  execNavigateIframe(url: string): void {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      this.execIframeUrl = 'https://' + url;
+    } else {
+      this.execIframeUrl = url;
+    }
+  }
+
+  execResetIframe(): void {
+    this.execIframeUrl = 'about:blank';
+  }
+
+  execHandleStep(status: 'passed' | 'failed' | 'blocked'): void {
+    if (!this.execCurrentItem || !this.execCurrentStep) return;
+    if ((status === 'failed' || status === 'blocked') && !this.execCommentOpen) {
+      this.execPendingStatus = status;
+      this.execCommentOpen = true;
+      return;
+    }
+    this.execSubmitStep(status, this.execPendingComment);
+  }
+
+  execSubmitStep(status: 'passed' | 'failed' | 'blocked', comment?: string): void {
+    const exec = this.execCurrentItem!;
+    const step = this.execCurrentStep;
+    this.execCommentOpen = false;
+    this.execPendingStatus = null;
+
+    this.executionService.updateStep(exec.id, step.id, status, comment || undefined).subscribe({
+      next: () => {
+        this.execStepResults.set(step.id, { status, comment: comment || '' });
+        this.execPendingComment = '';
+        this.execAdvance(status);
+      },
+      error: () => {
+        // On avance quand même pour ne pas bloquer l'utilisateur
+        this.execStepResults.set(step.id, { status, comment: comment || '' });
+        this.execPendingComment = '';
+        this.execAdvance(status);
+      },
+    });
+  }
+
+  private execAdvance(_lastStatus: string): void {
+    const steps = this.execCurrentSteps;
+    if (this.execStepIdx < steps.length - 1) {
+      this.execStepIdx++;
+      return;
+    }
+    // Dernier step du TC — calculer le statut global
+    const results = steps.map(s => this.execStepResults.get(s.id)?.status || 'pending');
+    const globalStatus = results.includes('failed') ? 'failed'
+      : results.includes('blocked') ? 'blocked' : 'passed';
+
+    this.executionService.completeExecution(this.execCurrentItem!.id, globalStatus).subscribe({
+      next: (updatedExec) => {
+        this.execQueue[this.execCurrentIdx] = { ...this.execQueue[this.execCurrentIdx], global_status: updatedExec.global_status };
+        this.execNextTc();
+      },
+      error: () => this.execNextTc(),
+    });
+  }
+
+  private execNextTc(): void {
+    if (this.execCurrentIdx < this.execQueue.length - 1) {
+      this.execCurrentIdx++;
+      this.execStepIdx = 0;
+      this.execStepResults = new Map();
+      this.execResetIframe();
+    } else {
+      // Tous les TCs terminés
+      this.executionService.completeSession(this.execSession!.id).subscribe({
+        next: (report) => {
+          this.execReport = report;
+          this.currentView = 'execution-report';
+        },
+        error: () => { this.currentView = 'execution-report'; },
+      });
+    }
+  }
+
+  execAbort(): void {
+    this.currentView = 'tc-list';
+    this.execSession = null;
+    this.execQueue = [];
+    this.execStepResults = new Map();
+    this.execResetIframe();
   }
 
   createSquashProjectInline(): void {

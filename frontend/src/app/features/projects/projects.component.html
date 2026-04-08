@@ -240,6 +240,15 @@
                 <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Injecter{{ selectedTcIds.size > 0 ? ' (' + selectedTcIds.size + ')' : '' }}
               </button>
+              <button class="btn-exec"
+                      (click)="launchExecution()"
+                      *ngIf="testCases.length > 0"
+                      [disabled]="selectedTcIds.size === 0 || execLaunching"
+                      [title]="selectedTcIds.size === 0 ? 'Sélectionner des CT d\'abord' : 'Lancer l\'exécution'">
+                <span class="spinner sm" *ngIf="execLaunching"></span>
+                <svg *ngIf="!execLaunching" width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg>
+                {{ execLaunching ? 'Lancement...' : 'Exécuter' + (selectedTcIds.size > 0 ? ' (' + selectedTcIds.size + ')' : '') }}
+              </button>
             </div>
           </div>
 
@@ -681,4 +690,194 @@
     </div>
   </div>
 
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- VUE : EXÉCUTION                                        -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="execution-overlay" *ngIf="currentView === 'execution' && execCurrentItem">
+
+  <!-- Header -->
+  <div class="exec-header">
+    <div class="exec-header-left">
+      <button class="btn-exec-abort" (click)="execAbort()">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M9 11L5 7l4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Abandonner
+      </button>
+      <span class="exec-session-name">{{ execSession?.name }}</span>
+    </div>
+    <div class="exec-header-progress">
+      <span class="exec-progress-label">CT {{ execCurrentIdx + 1 }} / {{ execQueue.length }}</span>
+      <div class="exec-progress-bar"><div class="exec-progress-fill" [style.width.%]="execProgress"></div></div>
+      <span class="exec-progress-pct">{{ execProgress }}%</span>
+    </div>
+  </div>
+
+  <!-- Split layout -->
+  <div class="exec-body">
+
+    <!-- Gauche : navigateur interne -->
+    <div class="exec-browser">
+      <div class="exec-browser-bar">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/></svg>
+        <input class="exec-url-input" type="text" placeholder="https://..." [(ngModel)]="execIframeUrl"
+               (keyup.enter)="execNavigateIframe(execIframeUrl)"/>
+        <button class="exec-btn-nav" (click)="execNavigateIframe(execIframeUrl)" title="Naviguer">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="exec-btn-reset" (click)="execResetIframe()" title="Réinitialiser">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 7a5 5 0 1 0 1-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M2 2v3h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="exec-iframe-wrap">
+        <iframe [src]="execIframeUrl | safeUrl"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                class="exec-iframe"></iframe>
+        <div class="exec-iframe-hint" *ngIf="execIframeUrl === 'about:blank'">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="13" stroke="currentColor" stroke-width="1.5"/><path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <p>Saisissez une URL pour charger l'application à tester</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Droite : steps -->
+    <div class="exec-steps-panel">
+      <!-- TC courant -->
+      <div class="exec-tc-header">
+        <div class="exec-tc-badge">CT {{ execCurrentIdx + 1 }}/{{ execQueue.length }}</div>
+        <h3 class="exec-tc-title">{{ execCurrentTc?.title }}</h3>
+        <div class="exec-tc-pre" *ngIf="execCurrentTc?.preconditions">
+          <span class="exec-pre-label">Préconditions</span>
+          <p>{{ execCurrentTc.preconditions }}</p>
+        </div>
+      </div>
+
+      <!-- Liste des steps -->
+      <div class="exec-steps-list">
+        <div class="exec-step-item" *ngFor="let step of execCurrentSteps; let i = index"
+             [class.exec-step-active]="i === execStepIdx"
+             [class.exec-step-passed]="execStepResults.get(step.id)?.status === 'passed'"
+             [class.exec-step-failed]="execStepResults.get(step.id)?.status === 'failed'"
+             [class.exec-step-blocked]="execStepResults.get(step.id)?.status === 'blocked'">
+          <div class="exec-step-num">
+            <svg *ngIf="execStepResults.get(step.id)?.status === 'passed'" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3.5 3.5 5.5-5.5" stroke="#16a34a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg *ngIf="execStepResults.get(step.id)?.status === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="#dc2626" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <svg *ngIf="execStepResults.get(step.id)?.status === 'blocked'" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="#f59e0b" stroke-width="1.4"/><path d="M7 4.5v3M7 9.5v.5" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span *ngIf="!execStepResults.get(step.id)">{{ i + 1 }}</span>
+          </div>
+          <div class="exec-step-content">
+            <p class="exec-step-action">{{ step.action }}</p>
+            <p class="exec-step-expected">{{ step.expected_result }}</p>
+            <p class="exec-step-comment" *ngIf="execStepResults.get(step.id)?.comment">
+              {{ execStepResults.get(step.id)?.comment }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions step courant -->
+      <div class="exec-actions" *ngIf="execCurrentStep && !execCommentOpen">
+        <div class="exec-step-current-label">Étape {{ execStepIdx + 1 }}/{{ execCurrentSteps.length }}</div>
+        <div class="exec-action-btns">
+          <button class="exec-btn exec-btn-pass" (click)="execHandleStep('passed')">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3.5 3.5 5.5-5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Passé
+          </button>
+          <button class="exec-btn exec-btn-block" (click)="execHandleStep('blocked')">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.4"/><path d="M7 4.5v3M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Bloqué
+          </button>
+          <button class="exec-btn exec-btn-fail" (click)="execHandleStep('failed')">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Échoué
+          </button>
+        </div>
+      </div>
+
+      <!-- Commentaire -->
+      <div class="exec-comment-modal" *ngIf="execCommentOpen">
+        <div class="exec-comment-header">
+          <span>Commentaire —
+            <span class="exec-status-tag" [class]="'tag-' + execPendingStatus">
+              {{ execPendingStatus === 'failed' ? 'Échec' : 'Bloqué' }}
+            </span>
+          </span>
+        </div>
+        <textarea class="exec-comment-input" [(ngModel)]="execPendingComment"
+                  placeholder="Décrivez le problème rencontré... (optionnel)"
+                  rows="3"></textarea>
+        <div class="exec-comment-actions">
+          <button class="exec-btn-comment-cancel" (click)="execCommentOpen = false; execPendingStatus = null">Annuler</button>
+          <button class="exec-btn-comment-submit" (click)="execSubmitStep(execPendingStatus!, execPendingComment)">Confirmer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- VUE : RAPPORT D'EXÉCUTION                             -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="exec-overlay" *ngIf="currentView === 'execution-report' && execReport">
+  <div class="exec-report">
+
+    <div class="exec-report-header">
+      <div>
+        <h2>Rapport d'exécution</h2>
+        <p class="exec-report-name">{{ execReport.session.name }}</p>
+      </div>
+      <button class="btn-modal-cancel" (click)="currentView = 'tc-list'">Fermer</button>
+    </div>
+
+    <div class="exec-report-stats">
+      <div class="exec-stat exec-stat-pass">
+        <span class="exec-stat-num">{{ execReport.report.passed }}</span>
+        <span class="exec-stat-label">Passés</span>
+      </div>
+      <div class="exec-stat exec-stat-fail">
+        <span class="exec-stat-num">{{ execReport.report.failed }}</span>
+        <span class="exec-stat-label">Échoués</span>
+      </div>
+      <div class="exec-stat exec-stat-block">
+        <span class="exec-stat-num">{{ execReport.report.blocked }}</span>
+        <span class="exec-stat-label">Bloqués</span>
+      </div>
+      <div class="exec-stat exec-stat-total">
+        <span class="exec-stat-num">{{ execReport.report.total }}</span>
+        <span class="exec-stat-label">Total</span>
+      </div>
+      <div class="exec-stat exec-stat-duration">
+        <span class="exec-stat-num">{{ execReport.report.duration }}s</span>
+        <span class="exec-stat-label">Durée</span>
+      </div>
+    </div>
+
+    <div class="exec-report-bar">
+      <div class="exec-report-bar-pass" [style.width.%]="execReport.report.total ? (execReport.report.passed / execReport.report.total * 100) : 0"></div>
+      <div class="exec-report-bar-block" [style.width.%]="execReport.report.total ? (execReport.report.blocked / execReport.report.total * 100) : 0"></div>
+      <div class="exec-report-bar-fail" [style.width.%]="execReport.report.total ? (execReport.report.failed / execReport.report.total * 100) : 0"></div>
+    </div>
+
+    <div class="exec-report-table-wrap">
+      <table class="exec-report-table">
+        <thead><tr><th>Cas de test</th><th>Priorité</th><th>Statut</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let exec of execReport.executions">
+            <td>{{ exec.tc_title }}</td>
+            <td><span class="badge priority" [ngClass]="priorityClass(exec.priority || '')">{{ exec.priority }}</span></td>
+            <td>
+              <span class="exec-status-badge" [class]="'exec-badge-' + exec.global_status">
+                {{ exec.global_status === 'passed' ? 'Passé' : exec.global_status === 'failed' ? 'Échoué' : exec.global_status === 'blocked' ? 'Bloqué' : 'En attente' }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="exec-report-squash" *ngIf="execReport.session.squash_campaign_id">
+      Campagne Squash #{{ execReport.session.squash_campaign_id }} créée
+    </div>
+
+  </div>
 </div>

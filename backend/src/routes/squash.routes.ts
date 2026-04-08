@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getSquashProjects, pushTestCasesToSquash, createSquashProject } from '../services/squash.service';
+import { getSquashProjects, getSquashTestCases, getSquashTestCaseDetail, pushTestCasesToSquash, createSquashProject } from '../services/squash.service';
 import { createOpTask, createTimeEntry } from '../services/openproject.service';
 
 const router = Router();
@@ -29,6 +29,32 @@ router.get('/projects', async (req: Request, res: Response) => {
   try {
     const projects = await getSquashProjects(url, token);
     res.json(projects);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/squash/projects/:id/test-cases — CTs d'un projet Squash
+router.get('/projects/:id/test-cases', async (req: Request, res: Response) => {
+  const { url, token } = getSquashCreds(req);
+  if (!url || !token) { res.status(400).json({ error: 'Credentials Squash requis' }); return; }
+  if (!validateUrl(url)) { res.status(400).json({ error: 'URL Squash invalide' }); return; }
+  try {
+    const tcs = await getSquashTestCases(url, token, Number(req.params.id));
+    res.json(tcs);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/squash/test-cases/:id — détail d'un TC Squash avec steps
+router.get('/test-cases/:id', async (req: Request, res: Response) => {
+  const { url, token } = getSquashCreds(req);
+  if (!url || !token) { res.status(400).json({ error: 'Credentials Squash requis' }); return; }
+  if (!validateUrl(url)) { res.status(400).json({ error: 'URL Squash invalide' }); return; }
+  try {
+    const tc = await getSquashTestCaseDetail(url, token, Number(req.params.id));
+    res.json(tc);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
