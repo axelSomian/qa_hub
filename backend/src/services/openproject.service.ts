@@ -30,13 +30,13 @@ export const getUserStories = async (
     projectId: string
   ) => {
     const PAGE_SIZE = 100;
-    let offset = 1;
+    let page = 1;
     let total = Infinity;
     const all: any[] = [];
 
     while (all.length < total) {
       const res = await fetch(
-        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&offset=${offset}`,
+        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&page=${page}`,
         { headers: getHeaders(token) }
       );
 
@@ -50,7 +50,7 @@ export const getUserStories = async (
       all.push(...elements);
 
       if (elements.length < PAGE_SIZE) break;
-      offset += PAGE_SIZE;
+      page++;
     }
 
     return all.map((us: any) => ({
