@@ -35,12 +35,28 @@ CREATE TABLE IF NOT EXISTS test_steps (
   expected_result TEXT NOT NULL
 );
 
+-- Sessions d'exécution (regroupe plusieurs CTs)
+CREATE TABLE IF NOT EXISTS execution_sessions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  name VARCHAR(200),
+  started_at TIMESTAMP DEFAULT NOW(),
+  ended_at TIMESTAMP,
+  status VARCHAR(20) DEFAULT 'in_progress',
+  squash_campaign_id VARCHAR(100),
+  notes TEXT
+);
+
 -- Exécutions
 CREATE TABLE IF NOT EXISTS executions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  session_id UUID REFERENCES execution_sessions(id) ON DELETE CASCADE,
   test_case_id UUID REFERENCES test_cases(id) ON DELETE CASCADE,
+  started_at TIMESTAMP DEFAULT NOW(),
+  ended_at TIMESTAMP,
   executed_at TIMESTAMP DEFAULT NOW(),
-  global_status VARCHAR(20),
+  global_status VARCHAR(20) DEFAULT 'pending',
+  squash_execution_id VARCHAR(100),
+  squash_test_plan_item_id VARCHAR(100),
   notes TEXT
 );
 
@@ -51,5 +67,7 @@ CREATE TABLE IF NOT EXISTS execution_steps (
   step_id UUID REFERENCES test_steps(id),
   status VARCHAR(20),
   comment TEXT,
-  screenshot_url TEXT
+  screenshot_url TEXT,
+  squash_execution_step_id VARCHAR(100),
+  executed_at TIMESTAMP DEFAULT NOW()
 );

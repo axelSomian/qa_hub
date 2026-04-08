@@ -14,10 +14,33 @@ export interface PushResultItem {
   squashId?: number | string;
 }
 
+export interface OpTaskResult {
+  taskId?: number;
+  taskUrl?: string;
+  subject?: string;
+  timeEntryId?: number;
+  hoursLogged?: string;
+  error?: string;
+}
+
 export interface PushResponse {
   success: boolean;
   pushed: PushResultItem[];
   blocked: PushResultItem[];
+  opTask?: OpTaskResult | null;
+}
+
+export interface OpTaskPayload {
+  opUrl: string;
+  opToken: string;
+  opProjectId: number;
+  usId: number;
+  usTitle: string;
+  priority: 'low' | 'medium' | 'high';
+  hours: number;
+  estimatedHours: number;
+  comment?: string;
+  assigneeId?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -49,7 +72,11 @@ export class SquashService {
     return this.http.get<SquashProject[]>(`${this.apiUrl}/projects`, { headers: this.headers });
   }
 
-  push(tcIds: string[], projectId: number, folderName?: string): Observable<PushResponse> {
-    return this.http.post<PushResponse>(`${this.apiUrl}/push`, { tcIds, projectId, folderName }, { headers: this.headers });
+  createProject(name: string, description?: string): Observable<SquashProject> {
+    return this.http.post<SquashProject>(`${this.apiUrl}/projects`, { name, description }, { headers: this.headers });
+  }
+
+  push(tcIds: string[], projectId: number, folderName?: string, opTask?: OpTaskPayload): Observable<PushResponse> {
+    return this.http.post<PushResponse>(`${this.apiUrl}/push`, { tcIds, projectId, folderName, opTask }, { headers: this.headers });
   }
 }

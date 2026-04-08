@@ -3,6 +3,7 @@ import {
   getProjects,
   getUserStories,
   testConnection,
+  addComment,
 } from '../services/openproject.service';
 
 const router = Router();
@@ -41,6 +42,22 @@ router.get('/projects/:id/user-stories', async (req: Request, res: Response) => 
     const { baseUrl, token } = getConfig(req);
     const userStories = await getUserStories(baseUrl, token, req.params.id as string);
     res.json(userStories);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/openproject/work-packages/:id/comment — ajouter un commentaire
+router.post('/work-packages/:id/comment', async (req: Request, res: Response) => {
+  try {
+    const { baseUrl, token } = getConfig(req);
+    const { comment } = req.body;
+    if (!comment || !comment.trim()) {
+      res.status(400).json({ error: 'Commentaire vide' });
+      return;
+    }
+    const result = await addComment(baseUrl, token, Number(req.params.id), comment.trim());
+    res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

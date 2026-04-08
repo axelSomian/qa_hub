@@ -7,20 +7,23 @@ import {
   UserStory,
 } from '../../core/services/openproject.service';
 import { AiService, TestCase, TestStep } from '../../core/services/ai.service';
-import { SquashService, SquashProject, PushResponse } from '../../core/services/squash.service';
+import { SquashService, SquashProject, PushResponse, OpTaskPayload } from '../../core/services/squash.service';
+import { ExecutionService, ExecutionSession, Execution, ExecutionStep, SessionReport } from '../../core/services/execution.service';
+import { SafeUrlPipe } from '../../core/pipes/safe-url.pipe';
 
 const PAGE_SIZE = 8;
 
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, SafeUrlPipe],
   templateUrl: './projects.component.html',
   styleUrl: './projects.component.scss',
 })
 export class ProjectsComponent implements OnInit {
   opUrl = localStorage.getItem('op_url') || '';
   opToken = localStorage.getItem('op_token') || '';
+  connectedUserId: number | null = Number(localStorage.getItem('op_user_id')) || null;
   isConnected = false;
   connectionError = '';
   connectionLoading = false;
@@ -35,16 +38,24 @@ export class ProjectsComponent implements OnInit {
   usLoading = false;
 
   searchTerm = '';
+  typeFilter: 'all' | 'User story' | 'Bug' = 'all';
   currentPage = 1;
   totalPages = 1;
 
   // Navigation entre vues
-  currentView: 'us-list' | 'tc-list' | 'tc-detail' = 'us-list';
+  currentView: 'us-list' | 'tc-list' | 'tc-detail' | 'execution' | 'execution-report' = 'us-list';
   selectedUs: UserStory | null = null;
   selectedTc: TestCase | null = null;
 
   // Modale prévisualisation US
   previewUs: UserStory | null = null;
+
+  // Modale commentaire
+  commentUs: UserStory | null = null;
+  commentText = '';
+  commentSending = false;
+  commentSent = false;
+  commentError = '';
 
   // CT
   testCases: TestCase[] = [];
@@ -72,11 +83,62 @@ export class ProjectsComponent implements OnInit {
   squashConfigError = '';
   squashConnecting = false;
 
+  // OpenProject task on push
+  createOpTaskOnPush = false;
+  opTaskPriority: 'low' | 'medium' | 'high' = 'medium';
+  opTaskHours = '';
+  opTaskEstimatedHours = '';
+  opTaskComment = '';
+  opTaskResult: { taskUrl?: string; subject?: string; hoursLogged?: string; error?: string } | null = null;
+
+  get opFieldsValid(): boolean {
+    if (!this.createOpTaskOnPush) return true;
+    return !!this.opTaskHours && Number(this.opTaskHours) > 0
+        && !!this.opTaskEstimatedHours && Number(this.opTaskEstimatedHours) > 0;
+  }
+
+  private get selectedTcsPriority(): 'low' | 'medium' | 'high' {
+    const selected = this.testCases.filter(tc => tc.id && this.selectedTcIds.has(tc.id));
+    if (selected.some(tc => tc.priority === 'high')) return 'high';
+    if (selected.some(tc => tc.priority === 'medium')) return 'medium';
+    return 'low';
+  }
+
+  // ── Exécution ──────────────────────────────────────
+  execSession: ExecutionSession | null = null;
+  execQueue: Execution[] = [];          // liste ordonnée des executions
+  execCurrentIdx = 0;                   // index TC courant
+  execStepIdx = 0;                      // index step courant
+  execStepResults = new Map<string, { status: string; comment: string }>();
+  execIframeUrl = 'about:blank';
+  execCommentOpen = false;
+  execPendingStatus: 'failed' | 'blocked' | null = null;
+  execPendingComment = '';
+  execLaunching = false;
+  execReport: SessionReport | null = null;
+  execSquashProjectId: number | null = null;
+
+  get execCurrentItem(): Execution | null { return this.execQueue[this.execCurrentIdx] ?? null; }
+  get execCurrentTc(): any { return this.execCurrentItem?.tc ?? null; }
+  get execCurrentSteps(): any[] { return this.execCurrentTc?.steps ?? []; }
+  get execCurrentStep(): any { return this.execCurrentSteps[this.execStepIdx] ?? null; }
+  get execProgress(): number {
+    const done = this.execQueue.filter(e => e.global_status !== 'pending').length;
+    return this.execQueue.length ? Math.round((done / this.execQueue.length) * 100) : 0;
+  }
+
   // Squash push
   squashProjects: SquashProject[] = [];
   squashProjectsLoading = false;
   selectedSquashProjectId: number | null = null;
   squashFolderName = '';
+
+  // Création projet Squash
+  showCreateSquashProject = false;
+  newSquashProjectName = '';
+  newSquashProjectDesc = '';
+  creatingSquashProject = false;
+  createSquashProjectError = '';
   squashPanelOpen = false;
   pushingToSquash = false;
   pushResult: PushResponse | null = null;
@@ -86,7 +148,8 @@ export class ProjectsComponent implements OnInit {
   constructor(
     private opService: OpenprojectService,
     private aiService: AiService,
-    private squashService: SquashService
+    private squashService: SquashService,
+    private executionService: ExecutionService
   ) {}
 
   ngOnInit(): void {
@@ -98,11 +161,15 @@ export class ProjectsComponent implements OnInit {
     this.connectionLoading = true;
     this.connectionError = '';
     this.opService.testConnection(this.opUrl, this.opToken).subscribe({
-      next: () => {
+      next: (res: any) => {
         this.isConnected = true;
         this.connectionLoading = false;
         localStorage.setItem('op_url', this.opUrl);
         localStorage.setItem('op_token', this.opToken);
+        if (res?.user?.id) {
+          this.connectedUserId = res.user.id;
+          localStorage.setItem('op_user_id', String(res.user.id));
+        }
         this.loadProjects();
       },
       error: () => {
@@ -125,35 +192,45 @@ export class ProjectsComponent implements OnInit {
     this.selectedProject = project;
     this.userStories = [];
     this.filteredStories = [];
+    this.pagedStories = [];
     this.searchTerm = '';
+    this.typeFilter = 'all';
     this.currentPage = 1;
+    this.totalPages = 1;
     this.currentView = 'us-list';
     this.usLoading = true;
     this.opService.getUserStories(project.id).subscribe({
       next: (us) => {
+        if (this.selectedProject?.id !== project.id) return; // réponse périmée
         this.userStories = us;
-        this.filteredStories = us;
-        this.totalPages = Math.ceil(us.length / PAGE_SIZE);
+        this.filteredStories = [...us];
+        this.totalPages = Math.max(1, Math.ceil(us.length / PAGE_SIZE));
         this.updatePage();
         this.usLoading = false;
         this.loadTestCaseCounts(us);
       },
-      error: () => { this.usLoading = false; },
+      error: () => {
+        if (this.selectedProject?.id !== project.id) return;
+        this.usLoading = false;
+      },
     });
   }
 
   onSearch(): void {
     this.currentPage = 1;
     const term = this.searchTerm.toLowerCase();
-    this.filteredStories = term
-      ? this.userStories.filter(
-          (us) =>
-            us.subject.toLowerCase().includes(term) ||
-            us.description.toLowerCase().includes(term)
-        )
-      : [...this.userStories];
+    this.filteredStories = this.userStories.filter((us) => {
+      const matchType = this.typeFilter === 'all' || us.type === this.typeFilter;
+      const matchTerm = !term || us.subject.toLowerCase().includes(term) || us.description.toLowerCase().includes(term);
+      return matchType && matchTerm;
+    });
     this.totalPages = Math.max(1, Math.ceil(this.filteredStories.length / PAGE_SIZE));
     this.updatePage();
+  }
+
+  setTypeFilter(f: 'all' | 'User story' | 'Bug'): void {
+    this.typeFilter = f;
+    this.onSearch();
   }
 
   goToPage(page: number): void {
@@ -197,7 +274,46 @@ export class ProjectsComponent implements OnInit {
 
   @HostListener('document:keydown.escape')
   onEscape(): void {
+    if (this.commentUs) { this.closeCommentModal(); return; }
     if (this.previewUs) this.closeUsPreview();
+  }
+
+  // ── Commentaire OpenProject ───────────────────────
+
+  openCommentModal(us: UserStory, event?: Event): void {
+    event?.stopPropagation();
+    this.commentUs = us;
+    this.commentText = '';
+    this.commentSent = false;
+    this.commentError = '';
+    document.body.style.overflow = 'hidden';
+  }
+
+  closeCommentModal(): void {
+    this.commentUs = null;
+    this.commentText = '';
+    this.commentSending = false;
+    this.commentSent = false;
+    this.commentError = '';
+    document.body.style.overflow = '';
+  }
+
+  submitComment(): void {
+    if (!this.commentUs || !this.commentText.trim()) return;
+    this.commentSending = true;
+    this.commentError = '';
+    this.opService.addComment(this.commentUs.id, this.commentText.trim()).subscribe({
+      next: () => {
+        this.commentSending = false;
+        this.commentSent = true;
+        this.commentText = '';
+        setTimeout(() => this.closeCommentModal(), 1500);
+      },
+      error: (err: any) => {
+        this.commentSending = false;
+        this.commentError = err?.error?.error || 'Erreur lors de l\'envoi du commentaire';
+      },
+    });
   }
 
   openTcFromPreview(us: UserStory): void {
@@ -218,6 +334,10 @@ export class ProjectsComponent implements OnInit {
     this.squashFolderName = '';
     this.selectedTcIds = new Set();
     this.selectedTc = null;
+    this.createOpTaskOnPush = false;
+    this.opTaskHours = '';
+    this.opTaskComment = '';
+    this.opTaskResult = null;
     this.loadExistingTestCases(us.id);
   }
 
@@ -506,6 +626,9 @@ export class ProjectsComponent implements OnInit {
     this.squashPanelOpen = !this.squashPanelOpen;
     this.pushResult = null;
     this.pushError = '';
+    if (this.squashPanelOpen) {
+      this.opTaskPriority = this.selectedTcsPriority;
+    }
     if (this.squashPanelOpen && this.squashProjects.length === 0) {
       this.squashProjectsLoading = true;
       this.squashService.getProjects().subscribe({
@@ -519,16 +642,174 @@ export class ProjectsComponent implements OnInit {
     return items.map(i => `"${i.title}"`).join(', ');
   }
 
+  // ── Lancement exécution ───────────────────────────
+
+  launchExecution(): void {
+    if (this.selectedTcIds.size === 0) return;
+    this.execLaunching = true;
+    const tcIds = Array.from(this.selectedTcIds);
+    const sessionName = `Exécution — ${this.selectedUs?.subject || 'Session'} — ${new Date().toLocaleDateString('fr-FR')}`;
+    const squashProjectId = this.selectedSquashProjectId ?? undefined;
+
+    this.executionService.createSession(tcIds, sessionName, squashProjectId).subscribe({
+      next: ({ session, executions }) => {
+        this.execSession = session;
+        this.execQueue = executions;
+        this.execCurrentIdx = 0;
+        this.execStepIdx = 0;
+        this.execStepResults = new Map();
+        this.execIframeUrl = 'about:blank';
+        this.execCommentOpen = false;
+        this.execPendingStatus = null;
+        this.execPendingComment = '';
+        this.execLaunching = false;
+        this.currentView = 'execution';
+      },
+      error: (err: any) => {
+        this.execLaunching = false;
+        this.pushError = err?.error?.error || 'Erreur lors du lancement de la session';
+      },
+    });
+  }
+
+  execNavigateIframe(url: string): void {
+    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+      this.execIframeUrl = 'https://' + url;
+    } else {
+      this.execIframeUrl = url;
+    }
+  }
+
+  execResetIframe(): void {
+    this.execIframeUrl = 'about:blank';
+  }
+
+  execHandleStep(status: 'passed' | 'failed' | 'blocked'): void {
+    if (!this.execCurrentItem || !this.execCurrentStep) return;
+    if ((status === 'failed' || status === 'blocked') && !this.execCommentOpen) {
+      this.execPendingStatus = status;
+      this.execCommentOpen = true;
+      return;
+    }
+    this.execSubmitStep(status, this.execPendingComment);
+  }
+
+  execSubmitStep(status: 'passed' | 'failed' | 'blocked', comment?: string): void {
+    const exec = this.execCurrentItem!;
+    const step = this.execCurrentStep;
+    this.execCommentOpen = false;
+    this.execPendingStatus = null;
+
+    this.executionService.updateStep(exec.id, step.id, status, comment || undefined).subscribe({
+      next: () => {
+        this.execStepResults.set(step.id, { status, comment: comment || '' });
+        this.execPendingComment = '';
+        this.execAdvance(status);
+      },
+      error: () => {
+        // On avance quand même pour ne pas bloquer l'utilisateur
+        this.execStepResults.set(step.id, { status, comment: comment || '' });
+        this.execPendingComment = '';
+        this.execAdvance(status);
+      },
+    });
+  }
+
+  private execAdvance(_lastStatus: string): void {
+    const steps = this.execCurrentSteps;
+    if (this.execStepIdx < steps.length - 1) {
+      this.execStepIdx++;
+      return;
+    }
+    // Dernier step du TC — calculer le statut global
+    const results = steps.map(s => this.execStepResults.get(s.id)?.status || 'pending');
+    const globalStatus = results.includes('failed') ? 'failed'
+      : results.includes('blocked') ? 'blocked' : 'passed';
+
+    this.executionService.completeExecution(this.execCurrentItem!.id, globalStatus).subscribe({
+      next: (updatedExec) => {
+        this.execQueue[this.execCurrentIdx] = { ...this.execQueue[this.execCurrentIdx], global_status: updatedExec.global_status };
+        this.execNextTc();
+      },
+      error: () => this.execNextTc(),
+    });
+  }
+
+  private execNextTc(): void {
+    if (this.execCurrentIdx < this.execQueue.length - 1) {
+      this.execCurrentIdx++;
+      this.execStepIdx = 0;
+      this.execStepResults = new Map();
+      this.execResetIframe();
+    } else {
+      // Tous les TCs terminés
+      this.executionService.completeSession(this.execSession!.id).subscribe({
+        next: (report) => {
+          this.execReport = report;
+          this.currentView = 'execution-report';
+        },
+        error: () => { this.currentView = 'execution-report'; },
+      });
+    }
+  }
+
+  execAbort(): void {
+    this.currentView = 'tc-list';
+    this.execSession = null;
+    this.execQueue = [];
+    this.execStepResults = new Map();
+    this.execResetIframe();
+  }
+
+  createSquashProjectInline(): void {
+    if (!this.newSquashProjectName.trim()) return;
+    this.creatingSquashProject = true;
+    this.createSquashProjectError = '';
+    this.squashService.createProject(this.newSquashProjectName.trim(), this.newSquashProjectDesc.trim()).subscribe({
+      next: (project) => {
+        this.squashProjects = [...this.squashProjects, project];
+        this.selectedSquashProjectId = project.id;
+        this.showCreateSquashProject = false;
+        this.newSquashProjectName = '';
+        this.newSquashProjectDesc = '';
+        this.creatingSquashProject = false;
+      },
+      error: (err: any) => {
+        this.creatingSquashProject = false;
+        this.createSquashProjectError = err?.error?.error || 'Erreur lors de la création du projet';
+      },
+    });
+  }
+
   pushToSquash(): void {
     if (!this.selectedSquashProjectId || this.selectedTcIds.size === 0) return;
     this.pushingToSquash = true;
     this.pushResult = null;
     this.pushError = '';
+    this.opTaskResult = null;
+
+    let opTask: OpTaskPayload | undefined;
+    if (this.createOpTaskOnPush && this.selectedUs && this.selectedProject) {
+      opTask = {
+        opUrl: this.opUrl,
+        opToken: this.opToken,
+        opProjectId: this.selectedProject.id,
+        usId: this.selectedUs.id,
+        usTitle: this.selectedUs.subject,
+        priority: this.opTaskPriority,
+        hours: Number(this.opTaskHours),
+        estimatedHours: Number(this.opTaskEstimatedHours),
+        comment: this.opTaskComment || undefined,
+        assigneeId: this.connectedUserId ?? undefined,
+      };
+    }
+
     const tcIds = Array.from(this.selectedTcIds);
-    this.squashService.push(tcIds, this.selectedSquashProjectId, this.squashFolderName || undefined).subscribe({
+    this.squashService.push(tcIds, this.selectedSquashProjectId, this.squashFolderName || undefined, opTask).subscribe({
       next: (result) => {
         this.pushingToSquash = false;
         this.pushResult = result;
+        this.opTaskResult = result.opTask || null;
         this.squashPanelOpen = false;
         this.selectedTcIds = new Set();
         this.loadExistingTestCases(this.selectedUs!.id);

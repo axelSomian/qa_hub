@@ -29,6 +29,130 @@ export const getSquashProjects = async (squashUrl: string, squashToken: string) 
   return (data._embedded?.projects || []).map((p: any) => ({ id: p.id, name: p.name }));
 };
 
+export const getSquashTestCases = async (squashUrl: string, squashToken: string, projectId: number) => {
+  // Récupère les TCs via la librairie du projet
+  const data: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/projects/${projectId}/test-cases?size=200`,
+    squashToken
+  );
+  return (data._embedded?.testCases || data._embedded?.['test-cases'] || []).map((tc: any) => ({
+    id: tc.id,
+    name: tc.name,
+    reference: tc.reference || '',
+    importance: tc.importance || 'MEDIUM',
+    status: tc.status || 'WORK_IN_PROGRESS',
+  }));
+};
+
+export const getSquashTestCaseDetail = async (squashUrl: string, squashToken: string, tcId: number) => {
+  const tc: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/test-cases/${tcId}`,
+    squashToken
+  );
+  // Récupérer les steps
+  const stepsData: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/test-cases/${tcId}/steps`,
+    squashToken
+  ).catch(() => ({ _embedded: { steps: [] } }));
+
+  const steps = (stepsData._embedded?.steps || []).map((s: any) => ({
+    id: s.id,
+    order: s.index || s.step_order || 0,
+    action: s.action || '',
+    expected_result: s.expected_result || s.expectedResult || '',
+  }));
+
+  return {
+    id: tc.id,
+    name: tc.name,
+    reference: tc.reference || '',
+    importance: tc.importance || 'MEDIUM',
+    prerequisite: tc.prerequisite || '',
+    steps,
+  };
+};
+
+// ── Exécution ─────────────────────────────────────────────────
+
+export const createCampaign = async (
+  squashUrl: string, squashToken: string, projectId: number, name: string
+): Promise<{ id: number }> => {
+  const data: any = await squashFetch(`${squashUrl}/api/rest/latest/campaigns`, squashToken, {
+    method: 'POST',
+    body: JSON.stringify({ _type: 'campaign', name, status: 'IN_PROGRESS', project: { id: projectId, _type: 'project' } }),
+  });
+  return { id: data.id };
+};
+
+export const addTestPlanItems = async (
+  squashUrl: string, squashToken: string, campaignId: number, squashTcIds: number[]
+): Promise<{ items: { id: number; tcId: number }[] }> => {
+  const items: { id: number; tcId: number }[] = [];
+  for (const tcId of squashTcIds) {
+    try {
+      const data: any = await squashFetch(
+        `${squashUrl}/api/rest/latest/campaigns/${campaignId}/test-plan`, squashToken,
+        { method: 'POST', body: JSON.stringify({ _type: 'test-plan-item', referencedTestCase: { id: tcId, _type: 'test-case' } }) }
+      );
+      items.push({ id: data.id, tcId });
+    } catch { /* CT non trouvé dans Squash, skip */ }
+  }
+  return { items };
+};
+
+export const createSquashExecution = async (
+  squashUrl: string, squashToken: string, testPlanItemId: number
+): Promise<{ id: number; steps: { id: number; stepOrder: number }[] }> => {
+  const data: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/test-plan-items/${testPlanItemId}/executions`, squashToken,
+    { method: 'POST', body: JSON.stringify({ _type: 'execution' }) }
+  );
+  const steps = (data.execution_steps || []).map((s: any) => ({ id: s.id, stepOrder: s.step_order || 0 }));
+  return { id: data.id, steps };
+};
+
+export const updateSquashExecution = async (
+  squashUrl: string, squashToken: string, executionId: number, status: 'SUCCESS' | 'FAILURE' | 'BLOCKED' | 'RUNNING'
+): Promise<void> => {
+  await squashFetch(`${squashUrl}/api/rest/latest/executions/${executionId}`, squashToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ _type: 'execution', execution_status: status }),
+  });
+};
+
+export const updateSquashExecutionStep = async (
+  squashUrl: string, squashToken: string, execStepId: number,
+  status: 'SUCCESS' | 'FAILURE' | 'BLOCKED', comment?: string
+): Promise<void> => {
+  await squashFetch(`${squashUrl}/api/rest/latest/execution-steps/${execStepId}`, squashToken, {
+    method: 'PATCH',
+    body: JSON.stringify({ _type: 'execution-step', execution_status: status, ...(comment ? { comment: { raw: comment } } : {}) }),
+  });
+};
+
+export const createSquashProject = async (
+  squashUrl: string,
+  squashToken: string,
+  name: string,
+  description?: string
+): Promise<{ id: number; name: string }> => {
+  const label = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const data: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/projects`,
+    squashToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        _type: 'project',
+        name: name.trim(),
+        label,
+        description: description?.trim() || '',
+      }),
+    }
+  );
+  return { id: data.id, name: data.name };
+};
+
 const priorityToImportance = (priority: string): string =>
   ({ high: 'HIGH', medium: 'MEDIUM', low: 'LOW' }[priority] || 'MEDIUM');
 

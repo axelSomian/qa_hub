@@ -114,11 +114,24 @@
           <div class="panel-top">
             <div>
               <h2>{{ selectedProject.name }}</h2>
-              <span class="us-count" *ngIf="!usLoading">{{ filteredStories.length }} / {{ userStories.length }} user stories</span>
+              <span class="us-count" *ngIf="!usLoading">{{ filteredStories.length }} / {{ userStories.length }} éléments</span>
             </div>
-            <div class="search-wrap">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10 10l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-              <input type="text" placeholder="Rechercher..." [(ngModel)]="searchTerm" (ngModelChange)="onSearch()"/>
+            <div class="panel-top-right">
+              <div class="type-filter-group">
+                <button class="type-filter-btn" [class.active]="typeFilter === 'all'" (click)="setTypeFilter('all')">Tous</button>
+                <button class="type-filter-btn us" [class.active]="typeFilter === 'User story'" (click)="setTypeFilter('User story')">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M4 6h4M4 4h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  User Stories
+                </button>
+                <button class="type-filter-btn bug" [class.active]="typeFilter === 'Bug'" (click)="setTypeFilter('Bug')">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="7" r="3.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 3.5V2M4 4.5L2.5 3M8 4.5L9.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  Bugs
+                </button>
+              </div>
+              <div class="search-wrap">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10 10l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                <input type="text" placeholder="Rechercher..." [(ngModel)]="searchTerm" (ngModelChange)="onSearch()"/>
+              </div>
             </div>
           </div>
 
@@ -127,10 +140,16 @@
           </div>
 
           <div class="us-list" *ngIf="!usLoading">
-            <div class="us-card" *ngFor="let us of pagedStories" [class.has-tc]="tcCountMap.has(us.id)">
+            <div class="us-card" *ngFor="let us of pagedStories"
+                 [class.has-tc]="tcCountMap.has(us.id)"
+                 [class.no-criteria]="!us.description || !us.description.trim()">
               <div class="us-head">
                 <p class="us-title">{{ us.subject }}</p>
                 <div class="us-head-right">
+                  <span class="no-criteria-badge" *ngIf="!us.description || !us.description.trim()" title="Aucun critère d'acceptation — génération impossible">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M6 1a5 5 0 100 10A5 5 0 006 1zm0 3v2.5M6 8.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    Sans critères
+                  </span>
                   <span class="tc-badge" *ngIf="tcCountMap.has(us.id)" title="Cas de test générés">
                     <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     {{ tcCountMap.get(us.id) }} CT
@@ -155,13 +174,20 @@
                     <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
                     Détails
                   </button>
-                  <button class="btn-generate" (click)="openTcScreen(us)">Voir CT</button>
+                  <button class="btn-comment" (click)="openCommentModal(us, $event)" title="Ajouter un commentaire OpenProject">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 2h10a1 1 0 011 1v6a1 1 0 01-1 1H5l-3 2V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+                  </button>
+                  <button class="btn-generate"
+                          (click)="openTcScreen(us)"
+                          [disabled]="!us.description || !us.description.trim()"
+                          [title]="(!us.description || !us.description.trim()) ? 'Aucun critère d\'acceptation — génération impossible' : ''">Voir CT</button>
                 </div>
               </div>
             </div>
 
             <div class="empty-search" *ngIf="pagedStories.length === 0">
-              Aucune user story trouvée pour "{{ searchTerm }}"
+              <ng-container *ngIf="userStories.length === 0">Aucun élément dans ce projet.</ng-container>
+              <ng-container *ngIf="userStories.length > 0">Aucun résultat pour les filtres appliqués.</ng-container>
             </div>
           </div>
 
@@ -214,6 +240,15 @@
                 <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 Injecter{{ selectedTcIds.size > 0 ? ' (' + selectedTcIds.size + ')' : '' }}
               </button>
+              <button class="btn-exec"
+                      (click)="launchExecution()"
+                      *ngIf="testCases.length > 0"
+                      [disabled]="selectedTcIds.size === 0 || execLaunching"
+                      [title]="selectedTcIds.size === 0 ? 'Sélectionner des CT d\'abord' : 'Lancer l\'exécution'">
+                <span class="spinner sm" *ngIf="execLaunching"></span>
+                <svg *ngIf="!execLaunching" width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M3 2l9 5-9 5V2z" fill="currentColor"/></svg>
+                {{ execLaunching ? 'Lancement...' : 'Exécuter' + (selectedTcIds.size > 0 ? ' (' + selectedTcIds.size + ')' : '') }}
+              </button>
             </div>
           </div>
 
@@ -245,21 +280,71 @@
             </div>
             <div class="squash-panel-body">
               <div class="squash-field">
-                <label class="squash-label">Projet Squash</label>
+                <div class="squash-label-row">
+                  <label class="squash-label">Projet Squash</label>
+                  <button class="btn-create-squash-project" (click)="showCreateSquashProject = !showCreateSquashProject; createSquashProjectError = ''">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    {{ showCreateSquashProject ? 'Annuler' : 'Nouveau projet' }}
+                  </button>
+                </div>
                 <span *ngIf="squashProjectsLoading" class="squash-loading"><span class="spinner sm"></span> Chargement...</span>
-                <select class="squash-select" [(ngModel)]="selectedSquashProjectId" *ngIf="!squashProjectsLoading && squashProjects.length > 0">
+                <select class="squash-select" [(ngModel)]="selectedSquashProjectId" *ngIf="!squashProjectsLoading && squashProjects.length > 0 && !showCreateSquashProject">
                   <option [ngValue]="null" disabled>Choisir un projet</option>
                   <option *ngFor="let p of squashProjects" [ngValue]="p.id">{{ p.name }}</option>
                 </select>
-                <span *ngIf="!squashProjectsLoading && squashProjects.length === 0 && !pushError" class="squash-empty">Aucun projet trouvé</span>
+                <span *ngIf="!squashProjectsLoading && squashProjects.length === 0 && !pushError && !showCreateSquashProject" class="squash-empty">Aucun projet disponible</span>
+
+                <!-- Formulaire création projet inline -->
+                <div class="create-squash-project-form" *ngIf="showCreateSquashProject">
+                  <input class="squash-input" type="text" [(ngModel)]="newSquashProjectName"
+                         placeholder="Nom du projet *" [disabled]="creatingSquashProject"/>
+                  <input class="squash-input" type="text" [(ngModel)]="newSquashProjectDesc"
+                         placeholder="Description (optionnelle)" [disabled]="creatingSquashProject"/>
+                  <button class="btn-squash-create-confirm"
+                          (click)="createSquashProjectInline()"
+                          [disabled]="!newSquashProjectName.trim() || creatingSquashProject">
+                    <span class="spinner sm" *ngIf="creatingSquashProject"></span>
+                    <span *ngIf="!creatingSquashProject">Créer</span>
+                  </button>
+                  <span class="squash-config-error" *ngIf="createSquashProjectError">{{ createSquashProjectError }}</span>
+                </div>
               </div>
               <div class="squash-field">
                 <label class="squash-label">Dossier <span class="squash-optional">(optionnel)</span></label>
                 <input class="squash-input" type="text" [(ngModel)]="squashFolderName" placeholder="Ex : Sprint 12, Régression V2…"/>
               </div>
             </div>
+            <!-- Tâche OpenProject optionnelle -->
+            <div class="squash-op-section">
+              <label class="squash-op-toggle">
+                <input type="checkbox" [(ngModel)]="createOpTaskOnPush"/>
+                <span>Créer une tâche OpenProject <span class="squash-optional">(Test Execution)</span></span>
+              </label>
+              <div class="squash-op-fields" *ngIf="createOpTaskOnPush">
+                <div class="squash-field">
+                  <label class="squash-label">Criticité <span class="squash-required">*</span></label>
+                  <div class="op-priority-selector">
+                    <button *ngFor="let p of priorities" class="prio-btn" [class]="'prio-' + p"
+                            [class.active]="opTaskPriority === p" (click)="opTaskPriority = p">{{ p }}</button>
+                  </div>
+                </div>
+                <div class="squash-field">
+                  <label class="squash-label">Temps passé <span class="squash-required">*</span> <span class="squash-optional">(heures)</span></label>
+                  <input class="squash-input" type="number" min="0" step="0.25" [(ngModel)]="opTaskHours" placeholder="ex: 2.5"/>
+                </div>
+                <div class="squash-field">
+                  <label class="squash-label">Temps estimé <span class="squash-required">*</span> <span class="squash-optional">(heures)</span></label>
+                  <input class="squash-input" type="number" min="0" step="0.25" [(ngModel)]="opTaskEstimatedHours" placeholder="ex: 4"/>
+                </div>
+                <div class="squash-field">
+                  <label class="squash-label">Commentaire <span class="squash-optional">(optionnel)</span></label>
+                  <input class="squash-input" type="text" [(ngModel)]="opTaskComment" placeholder="ex: Exécution sprint 3"/>
+                </div>
+              </div>
+            </div>
+
             <div class="squash-panel-footer">
-              <button class="btn-push-confirm" (click)="pushToSquash()" [disabled]="!selectedSquashProjectId || pushingToSquash">
+              <button class="btn-push-confirm" (click)="pushToSquash()" [disabled]="!selectedSquashProjectId || pushingToSquash || !opFieldsValid">
                 <span class="spinner sm" *ngIf="pushingToSquash"></span>
                 <svg *ngIf="!pushingToSquash" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M7 1v8M4 6l3 3 3-3M2 11h10" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
                 {{ pushingToSquash ? 'Injection en cours…' : 'Injecter' }}
@@ -285,6 +370,17 @@
             </div>
             <button class="push-result-close" (click)="pushResult = null">×</button>
           </div>
+          <!-- Résultat tâche OpenProject -->
+          <div class="op-task-result" *ngIf="opTaskResult && !opTaskResult.error">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Tâche OP créée : <a [href]="opTaskResult.taskUrl" target="_blank">{{ opTaskResult.subject }}</a></span>
+            <span class="op-task-hours" *ngIf="opTaskResult.hoursLogged">· {{ opTaskResult.hoursLogged }} loggés</span>
+          </div>
+          <div class="op-task-result op-task-warn" *ngIf="opTaskResult && opTaskResult.error">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/><path d="M7 4.5v3M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Tâche OP non créée : {{ opTaskResult.error }}
+          </div>
+
           <div class="gen-error" *ngIf="generationError">{{ generationError }}</div>
 
           <!-- Grille CT -->
@@ -492,6 +588,54 @@
   </div>
 
   <!-- ── MODALE US DETAIL ────────────────────────────────── -->
+  <!-- MODALE COMMENTAIRE -->
+  <div class="us-modal-backdrop" *ngIf="commentUs" (click)="closeCommentModal()">
+    <div class="us-modal comment-modal" (click)="$event.stopPropagation()">
+
+      <div class="us-modal-header">
+        <div class="us-modal-id-row">
+          <span class="us-modal-id">US #{{ commentUs.id }}</span>
+        </div>
+        <h2 class="us-modal-title">{{ commentUs.subject }}</h2>
+        <button class="us-modal-close" (click)="closeCommentModal()" aria-label="Fermer">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="us-modal-divider"></div>
+
+      <div class="us-modal-body">
+        <div class="us-modal-desc-label">Commentaire</div>
+        <textarea class="comment-textarea"
+                  [(ngModel)]="commentText"
+                  placeholder="Votre commentaire..."
+                  rows="5"
+                  [disabled]="commentSending || commentSent"></textarea>
+
+        <div class="comment-success" *ngIf="commentSent">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Commentaire publié avec succès
+        </div>
+        <div class="comment-error" *ngIf="commentError">{{ commentError }}</div>
+      </div>
+
+      <div class="us-modal-footer">
+        <span></span>
+        <div class="us-modal-footer-actions">
+          <button class="btn-modal-cancel" (click)="closeCommentModal()">Annuler</button>
+          <button class="btn-modal-tc"
+                  (click)="submitComment()"
+                  [disabled]="!commentText.trim() || commentSending || commentSent">
+            <span class="spinner sm" *ngIf="commentSending"></span>
+            <svg *ngIf="!commentSending" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 2h10a1 1 0 011 1v6a1 1 0 01-1 1H5l-3 2V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+            {{ commentSending ? 'Envoi...' : 'Publier' }}
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <div class="us-modal-backdrop" *ngIf="previewUs" (click)="closeUsPreview()">
     <div class="us-modal" (click)="$event.stopPropagation()">
 
@@ -533,7 +677,10 @@
         <span class="us-modal-tc-count us-modal-tc-none" *ngIf="!tcCountMap.has(previewUs.id)">Aucun CT généré</span>
         <div class="us-modal-footer-actions">
           <button class="btn-modal-cancel" (click)="closeUsPreview()">Fermer</button>
-          <button class="btn-modal-tc" (click)="openTcFromPreview(previewUs)">
+          <button class="btn-modal-tc"
+                  (click)="openTcFromPreview(previewUs)"
+                  [disabled]="!previewUs.description || !previewUs.description.trim()"
+                  [title]="(!previewUs.description || !previewUs.description.trim()) ? 'Aucun critère d\'acceptation — génération impossible' : ''">
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 7l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {{ tcCountMap.has(previewUs.id) ? 'Voir les CT' : 'Générer les CT' }}
           </button>
@@ -543,4 +690,194 @@
     </div>
   </div>
 
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- VUE : EXÉCUTION                                        -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="execution-overlay" *ngIf="currentView === 'execution' && execCurrentItem">
+
+  <!-- Header -->
+  <div class="exec-header">
+    <div class="exec-header-left">
+      <button class="btn-exec-abort" (click)="execAbort()">
+        <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M9 11L5 7l4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        Abandonner
+      </button>
+      <span class="exec-session-name">{{ execSession?.name }}</span>
+    </div>
+    <div class="exec-header-progress">
+      <span class="exec-progress-label">CT {{ execCurrentIdx + 1 }} / {{ execQueue.length }}</span>
+      <div class="exec-progress-bar"><div class="exec-progress-fill" [style.width.%]="execProgress"></div></div>
+      <span class="exec-progress-pct">{{ execProgress }}%</span>
+    </div>
+  </div>
+
+  <!-- Split layout -->
+  <div class="exec-body">
+
+    <!-- Gauche : navigateur interne -->
+    <div class="exec-browser">
+      <div class="exec-browser-bar">
+        <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/></svg>
+        <input class="exec-url-input" type="text" placeholder="https://..." [(ngModel)]="execIframeUrl"
+               (keyup.enter)="execNavigateIframe(execIframeUrl)"/>
+        <button class="exec-btn-nav" (click)="execNavigateIframe(execIframeUrl)" title="Naviguer">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M5 3l4 4-4 4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button class="exec-btn-reset" (click)="execResetIframe()" title="Réinitialiser">
+          <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 7a5 5 0 1 0 1-3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/><path d="M2 2v3h3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+      <div class="exec-iframe-wrap">
+        <iframe [src]="execIframeUrl | safeUrl"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+                class="exec-iframe"></iframe>
+        <div class="exec-iframe-hint" *ngIf="execIframeUrl === 'about:blank'">
+          <svg width="32" height="32" viewBox="0 0 32 32" fill="none"><circle cx="16" cy="16" r="13" stroke="currentColor" stroke-width="1.5"/><path d="M10 16h12M16 10v12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <p>Saisissez une URL pour charger l'application à tester</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Droite : steps -->
+    <div class="exec-steps-panel">
+      <!-- TC courant -->
+      <div class="exec-tc-header">
+        <div class="exec-tc-badge">CT {{ execCurrentIdx + 1 }}/{{ execQueue.length }}</div>
+        <h3 class="exec-tc-title">{{ execCurrentTc?.title }}</h3>
+        <div class="exec-tc-pre" *ngIf="execCurrentTc?.preconditions">
+          <span class="exec-pre-label">Préconditions</span>
+          <p>{{ execCurrentTc.preconditions }}</p>
+        </div>
+      </div>
+
+      <!-- Liste des steps -->
+      <div class="exec-steps-list">
+        <div class="exec-step-item" *ngFor="let step of execCurrentSteps; let i = index"
+             [class.exec-step-active]="i === execStepIdx"
+             [class.exec-step-passed]="execStepResults.get(step.id)?.status === 'passed'"
+             [class.exec-step-failed]="execStepResults.get(step.id)?.status === 'failed'"
+             [class.exec-step-blocked]="execStepResults.get(step.id)?.status === 'blocked'">
+          <div class="exec-step-num">
+            <svg *ngIf="execStepResults.get(step.id)?.status === 'passed'" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3.5 3.5 5.5-5.5" stroke="#16a34a" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg *ngIf="execStepResults.get(step.id)?.status === 'failed'" width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="#dc2626" stroke-width="1.6" stroke-linecap="round"/></svg>
+            <svg *ngIf="execStepResults.get(step.id)?.status === 'blocked'" width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="#f59e0b" stroke-width="1.4"/><path d="M7 4.5v3M7 9.5v.5" stroke="#f59e0b" stroke-width="1.4" stroke-linecap="round"/></svg>
+            <span *ngIf="!execStepResults.get(step.id)">{{ i + 1 }}</span>
+          </div>
+          <div class="exec-step-content">
+            <p class="exec-step-action">{{ step.action }}</p>
+            <p class="exec-step-expected">{{ step.expected_result }}</p>
+            <p class="exec-step-comment" *ngIf="execStepResults.get(step.id)?.comment">
+              {{ execStepResults.get(step.id)?.comment }}
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Actions step courant -->
+      <div class="exec-actions" *ngIf="execCurrentStep && !execCommentOpen">
+        <div class="exec-step-current-label">Étape {{ execStepIdx + 1 }}/{{ execCurrentSteps.length }}</div>
+        <div class="exec-action-btns">
+          <button class="exec-btn exec-btn-pass" (click)="execHandleStep('passed')">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2.5 7l3.5 3.5 5.5-5.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            Passé
+          </button>
+          <button class="exec-btn exec-btn-block" (click)="execHandleStep('blocked')">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="7" cy="7" r="5" stroke="currentColor" stroke-width="1.4"/><path d="M7 4.5v3M7 9.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+            Bloqué
+          </button>
+          <button class="exec-btn exec-btn-fail" (click)="execHandleStep('failed')">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M3 3l8 8M11 3l-8 8" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            Échoué
+          </button>
+        </div>
+      </div>
+
+      <!-- Commentaire -->
+      <div class="exec-comment-modal" *ngIf="execCommentOpen">
+        <div class="exec-comment-header">
+          <span>Commentaire —
+            <span class="exec-status-tag" [class]="'tag-' + execPendingStatus">
+              {{ execPendingStatus === 'failed' ? 'Échec' : 'Bloqué' }}
+            </span>
+          </span>
+        </div>
+        <textarea class="exec-comment-input" [(ngModel)]="execPendingComment"
+                  placeholder="Décrivez le problème rencontré... (optionnel)"
+                  rows="3"></textarea>
+        <div class="exec-comment-actions">
+          <button class="exec-btn-comment-cancel" (click)="execCommentOpen = false; execPendingStatus = null">Annuler</button>
+          <button class="exec-btn-comment-submit" (click)="execSubmitStep(execPendingStatus!, execPendingComment)">Confirmer</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ══════════════════════════════════════════════════════ -->
+<!-- VUE : RAPPORT D'EXÉCUTION                             -->
+<!-- ══════════════════════════════════════════════════════ -->
+<div class="exec-overlay" *ngIf="currentView === 'execution-report' && execReport">
+  <div class="exec-report">
+
+    <div class="exec-report-header">
+      <div>
+        <h2>Rapport d'exécution</h2>
+        <p class="exec-report-name">{{ execReport.session.name }}</p>
+      </div>
+      <button class="btn-modal-cancel" (click)="currentView = 'tc-list'">Fermer</button>
+    </div>
+
+    <div class="exec-report-stats">
+      <div class="exec-stat exec-stat-pass">
+        <span class="exec-stat-num">{{ execReport.report.passed }}</span>
+        <span class="exec-stat-label">Passés</span>
+      </div>
+      <div class="exec-stat exec-stat-fail">
+        <span class="exec-stat-num">{{ execReport.report.failed }}</span>
+        <span class="exec-stat-label">Échoués</span>
+      </div>
+      <div class="exec-stat exec-stat-block">
+        <span class="exec-stat-num">{{ execReport.report.blocked }}</span>
+        <span class="exec-stat-label">Bloqués</span>
+      </div>
+      <div class="exec-stat exec-stat-total">
+        <span class="exec-stat-num">{{ execReport.report.total }}</span>
+        <span class="exec-stat-label">Total</span>
+      </div>
+      <div class="exec-stat exec-stat-duration">
+        <span class="exec-stat-num">{{ execReport.report.duration }}s</span>
+        <span class="exec-stat-label">Durée</span>
+      </div>
+    </div>
+
+    <div class="exec-report-bar">
+      <div class="exec-report-bar-pass" [style.width.%]="execReport.report.total ? (execReport.report.passed / execReport.report.total * 100) : 0"></div>
+      <div class="exec-report-bar-block" [style.width.%]="execReport.report.total ? (execReport.report.blocked / execReport.report.total * 100) : 0"></div>
+      <div class="exec-report-bar-fail" [style.width.%]="execReport.report.total ? (execReport.report.failed / execReport.report.total * 100) : 0"></div>
+    </div>
+
+    <div class="exec-report-table-wrap">
+      <table class="exec-report-table">
+        <thead><tr><th>Cas de test</th><th>Priorité</th><th>Statut</th></tr></thead>
+        <tbody>
+          <tr *ngFor="let exec of execReport.executions">
+            <td>{{ exec.tc_title }}</td>
+            <td><span class="badge priority" [ngClass]="priorityClass(exec.priority || '')">{{ exec.priority }}</span></td>
+            <td>
+              <span class="exec-status-badge" [class]="'exec-badge-' + exec.global_status">
+                {{ exec.global_status === 'passed' ? 'Passé' : exec.global_status === 'failed' ? 'Échoué' : exec.global_status === 'blocked' ? 'Bloqué' : 'En attente' }}
+              </span>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="exec-report-squash" *ngIf="execReport.session.squash_campaign_id">
+      Campagne Squash #{{ execReport.session.squash_campaign_id }} créée
+    </div>
+
+  </div>
 </div>
