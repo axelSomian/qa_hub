@@ -272,6 +272,50 @@
   }
 }
 
+.panel-top-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.type-filter-group {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  border: 0.5px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.type-filter-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: none;
+  border-right: 0.5px solid #e0e0e0;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.78rem;
+  color: #888;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+  white-space: nowrap;
+
+  &:last-child { border-right: none; }
+  &:hover { background: #f5f5f8; color: #333; }
+
+  &.active {
+    background: #f0f0fa;
+    color: #6366f1;
+    font-weight: 600;
+  }
+
+  &.us.active { background: #eef2ff; color: #4f46e5; }
+  &.bug.active { background: #fef3f2; color: #dc2626; }
+}
+
 .search-wrap {
   display: flex;
   align-items: center;
@@ -333,6 +377,29 @@
 .us-card.has-tc {
   border-color: #c7d7fe;
   background: #fafbff;
+}
+
+.us-card.no-criteria {
+  border-color: #f0c9a0;
+  background: #fffbf7;
+
+  &:hover {
+    border-color: #e5a97a;
+    box-shadow: 0 2px 8px rgba(234,88,12,0.06);
+  }
+}
+
+.no-criteria-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  background: #fff3e0;
+  color: #c2590a;
+  font-size: 0.68rem;
+  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 20px;
+  white-space: nowrap;
 }
 
 .us-head {
@@ -668,6 +735,13 @@
   transition: background 0.12s, border-color 0.12s;
 
   &:hover { background: #eef2ff; border-color: #c7d2fe; }
+
+  &:disabled {
+    color: #bbb;
+    border-color: #e8e8e8;
+    background: #f9f9f9;
+    cursor: not-allowed;
+  }
 }
 
 // ── CAS DE TEST ───────────────────────────────────
@@ -1255,12 +1329,62 @@
   min-width: 200px;
 }
 
+.squash-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .squash-label {
   font-size: 0.72rem;
   font-weight: 600;
   color: #888;
   text-transform: uppercase;
   letter-spacing: 0.05em;
+}
+
+.btn-create-squash-project {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #6366f1;
+  background: none;
+  border: 0.5px solid #c7d2fe;
+  border-radius: 5px;
+  padding: 0.18rem 0.5rem;
+  cursor: pointer;
+  transition: background 0.12s;
+
+  &:hover { background: #eef2ff; }
+}
+
+.create-squash-project-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.btn-squash-create-confirm {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #1a1a2e;
+  color: #fff;
+  border: none;
+  border-radius: 7px;
+  padding: 0.45rem 0.75rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s, opacity 0.12s;
+
+  &:hover { background: #2d2d4e; }
+  &:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 
 .squash-optional {
@@ -1746,6 +1870,61 @@
   }
 }
 
+.btn-comment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: 0.5px solid #e0e0e0;
+  border-radius: 6px;
+  padding: 0.4rem 0.6rem;
+  color: #888;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+
+  &:hover {
+    background: #f0f4ff;
+    border-color: #c7d2fe;
+    color: #6366f1;
+  }
+}
+
+.comment-textarea {
+  width: 100%;
+  border: 0.5px solid #e0e0e0;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.875rem;
+  font-family: inherit;
+  color: #333;
+  resize: vertical;
+  outline: none;
+  transition: border-color 0.15s;
+
+  &:focus { border-color: #6366f1; }
+  &:disabled { background: #f9f9f9; color: #aaa; }
+}
+
+.comment-success {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 0.75rem;
+  color: #16a34a;
+  font-size: 0.85rem;
+  font-weight: 500;
+}
+
+.comment-error {
+  margin-top: 0.75rem;
+  color: #dc2626;
+  font-size: 0.82rem;
+}
+
+.comment-modal {
+  max-width: 520px;
+}
+
 // surcharge du btn-generate pour retirer son margin-top quand il est dans .us-footer-actions
 .us-footer-actions .btn-generate {
   margin-top: 0;
@@ -2012,6 +2191,12 @@
   transition: background 0.15s, opacity 0.15s;
 
   &:hover { background: #2d2d4e; }
+
+  &:disabled {
+    background: #d0d0d0;
+    cursor: not-allowed;
+    opacity: 0.7;
+  }
 
   svg { flex-shrink: 0; }
 }

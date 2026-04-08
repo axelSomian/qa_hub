@@ -50,4 +50,12 @@ export class OpenprojectService {
       { headers: this.getHeaders() }
     );
   }
+
+  addComment(workPackageId: number, comment: string): Observable<{ id: number }> {
+    return this.http.post<{ id: number }>(
+      `${this.apiUrl}/work-packages/${workPackageId}/comment`,
+      { comment },
+      { headers: this.getHeaders() }
+    );
+  }
 }

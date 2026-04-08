@@ -114,11 +114,24 @@
           <div class="panel-top">
             <div>
               <h2>{{ selectedProject.name }}</h2>
-              <span class="us-count" *ngIf="!usLoading">{{ filteredStories.length }} / {{ userStories.length }} user stories</span>
+              <span class="us-count" *ngIf="!usLoading">{{ filteredStories.length }} / {{ userStories.length }} éléments</span>
             </div>
-            <div class="search-wrap">
-              <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10 10l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
-              <input type="text" placeholder="Rechercher..." [(ngModel)]="searchTerm" (ngModelChange)="onSearch()"/>
+            <div class="panel-top-right">
+              <div class="type-filter-group">
+                <button class="type-filter-btn" [class.active]="typeFilter === 'all'" (click)="setTypeFilter('all')">Tous</button>
+                <button class="type-filter-btn us" [class.active]="typeFilter === 'User story'" (click)="setTypeFilter('User story')">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><rect x="1" y="1" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M4 6h4M4 4h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  User Stories
+                </button>
+                <button class="type-filter-btn bug" [class.active]="typeFilter === 'Bug'" (click)="setTypeFilter('Bug')">
+                  <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><circle cx="6" cy="7" r="3.5" stroke="currentColor" stroke-width="1.3"/><path d="M6 3.5V2M4 4.5L2.5 3M8 4.5L9.5 3" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/></svg>
+                  Bugs
+                </button>
+              </div>
+              <div class="search-wrap">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><circle cx="6" cy="6" r="4.5" stroke="currentColor" stroke-width="1.3"/><path d="M10 10l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>
+                <input type="text" placeholder="Rechercher..." [(ngModel)]="searchTerm" (ngModelChange)="onSearch()"/>
+              </div>
             </div>
           </div>
 
@@ -127,10 +140,16 @@
           </div>
 
           <div class="us-list" *ngIf="!usLoading">
-            <div class="us-card" *ngFor="let us of pagedStories" [class.has-tc]="tcCountMap.has(us.id)">
+            <div class="us-card" *ngFor="let us of pagedStories"
+                 [class.has-tc]="tcCountMap.has(us.id)"
+                 [class.no-criteria]="!us.description || !us.description.trim()">
               <div class="us-head">
                 <p class="us-title">{{ us.subject }}</p>
                 <div class="us-head-right">
+                  <span class="no-criteria-badge" *ngIf="!us.description || !us.description.trim()" title="Aucun critère d'acceptation — génération impossible">
+                    <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M6 1a5 5 0 100 10A5 5 0 006 1zm0 3v2.5M6 8.5v.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>
+                    Sans critères
+                  </span>
                   <span class="tc-badge" *ngIf="tcCountMap.has(us.id)" title="Cas de test générés">
                     <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
                     {{ tcCountMap.get(us.id) }} CT
@@ -155,13 +174,20 @@
                     <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M1 7s2.5-5 6-5 6 5 6 5-2.5 5-6 5-6-5-6-5z" stroke="currentColor" stroke-width="1.3"/><circle cx="7" cy="7" r="2" stroke="currentColor" stroke-width="1.3"/></svg>
                     Détails
                   </button>
-                  <button class="btn-generate" (click)="openTcScreen(us)">Voir CT</button>
+                  <button class="btn-comment" (click)="openCommentModal(us, $event)" title="Ajouter un commentaire OpenProject">
+                    <svg width="13" height="13" viewBox="0 0 14 14" fill="none"><path d="M2 2h10a1 1 0 011 1v6a1 1 0 01-1 1H5l-3 2V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+                  </button>
+                  <button class="btn-generate"
+                          (click)="openTcScreen(us)"
+                          [disabled]="!us.description || !us.description.trim()"
+                          [title]="(!us.description || !us.description.trim()) ? 'Aucun critère d\'acceptation — génération impossible' : ''">Voir CT</button>
                 </div>
               </div>
             </div>
 
             <div class="empty-search" *ngIf="pagedStories.length === 0">
-              Aucune user story trouvée pour "{{ searchTerm }}"
+              <ng-container *ngIf="userStories.length === 0">Aucun élément dans ce projet.</ng-container>
+              <ng-container *ngIf="userStories.length > 0">Aucun résultat pour les filtres appliqués.</ng-container>
             </div>
           </div>
 
@@ -245,13 +271,34 @@
             </div>
             <div class="squash-panel-body">
               <div class="squash-field">
-                <label class="squash-label">Projet Squash</label>
+                <div class="squash-label-row">
+                  <label class="squash-label">Projet Squash</label>
+                  <button class="btn-create-squash-project" (click)="showCreateSquashProject = !showCreateSquashProject; createSquashProjectError = ''">
+                    <svg width="11" height="11" viewBox="0 0 12 12" fill="none"><path d="M6 1v10M1 6h10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+                    {{ showCreateSquashProject ? 'Annuler' : 'Nouveau projet' }}
+                  </button>
+                </div>
                 <span *ngIf="squashProjectsLoading" class="squash-loading"><span class="spinner sm"></span> Chargement...</span>
-                <select class="squash-select" [(ngModel)]="selectedSquashProjectId" *ngIf="!squashProjectsLoading && squashProjects.length > 0">
+                <select class="squash-select" [(ngModel)]="selectedSquashProjectId" *ngIf="!squashProjectsLoading && squashProjects.length > 0 && !showCreateSquashProject">
                   <option [ngValue]="null" disabled>Choisir un projet</option>
                   <option *ngFor="let p of squashProjects" [ngValue]="p.id">{{ p.name }}</option>
                 </select>
-                <span *ngIf="!squashProjectsLoading && squashProjects.length === 0 && !pushError" class="squash-empty">Aucun projet trouvé</span>
+                <span *ngIf="!squashProjectsLoading && squashProjects.length === 0 && !pushError && !showCreateSquashProject" class="squash-empty">Aucun projet disponible</span>
+
+                <!-- Formulaire création projet inline -->
+                <div class="create-squash-project-form" *ngIf="showCreateSquashProject">
+                  <input class="squash-input" type="text" [(ngModel)]="newSquashProjectName"
+                         placeholder="Nom du projet *" [disabled]="creatingSquashProject"/>
+                  <input class="squash-input" type="text" [(ngModel)]="newSquashProjectDesc"
+                         placeholder="Description (optionnelle)" [disabled]="creatingSquashProject"/>
+                  <button class="btn-squash-create-confirm"
+                          (click)="createSquashProjectInline()"
+                          [disabled]="!newSquashProjectName.trim() || creatingSquashProject">
+                    <span class="spinner sm" *ngIf="creatingSquashProject"></span>
+                    <span *ngIf="!creatingSquashProject">Créer</span>
+                  </button>
+                  <span class="squash-config-error" *ngIf="createSquashProjectError">{{ createSquashProjectError }}</span>
+                </div>
               </div>
               <div class="squash-field">
                 <label class="squash-label">Dossier <span class="squash-optional">(optionnel)</span></label>
@@ -532,6 +579,54 @@
   </div>
 
   <!-- ── MODALE US DETAIL ────────────────────────────────── -->
+  <!-- MODALE COMMENTAIRE -->
+  <div class="us-modal-backdrop" *ngIf="commentUs" (click)="closeCommentModal()">
+    <div class="us-modal comment-modal" (click)="$event.stopPropagation()">
+
+      <div class="us-modal-header">
+        <div class="us-modal-id-row">
+          <span class="us-modal-id">US #{{ commentUs.id }}</span>
+        </div>
+        <h2 class="us-modal-title">{{ commentUs.subject }}</h2>
+        <button class="us-modal-close" (click)="closeCommentModal()" aria-label="Fermer">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+
+      <div class="us-modal-divider"></div>
+
+      <div class="us-modal-body">
+        <div class="us-modal-desc-label">Commentaire</div>
+        <textarea class="comment-textarea"
+                  [(ngModel)]="commentText"
+                  placeholder="Votre commentaire..."
+                  rows="5"
+                  [disabled]="commentSending || commentSent"></textarea>
+
+        <div class="comment-success" *ngIf="commentSent">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 7l4 4 6-6" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          Commentaire publié avec succès
+        </div>
+        <div class="comment-error" *ngIf="commentError">{{ commentError }}</div>
+      </div>
+
+      <div class="us-modal-footer">
+        <span></span>
+        <div class="us-modal-footer-actions">
+          <button class="btn-modal-cancel" (click)="closeCommentModal()">Annuler</button>
+          <button class="btn-modal-tc"
+                  (click)="submitComment()"
+                  [disabled]="!commentText.trim() || commentSending || commentSent">
+            <span class="spinner sm" *ngIf="commentSending"></span>
+            <svg *ngIf="!commentSending" width="12" height="12" viewBox="0 0 14 14" fill="none"><path d="M2 2h10a1 1 0 011 1v6a1 1 0 01-1 1H5l-3 2V3a1 1 0 011-1z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/></svg>
+            {{ commentSending ? 'Envoi...' : 'Publier' }}
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
   <div class="us-modal-backdrop" *ngIf="previewUs" (click)="closeUsPreview()">
     <div class="us-modal" (click)="$event.stopPropagation()">
 
@@ -573,7 +668,10 @@
         <span class="us-modal-tc-count us-modal-tc-none" *ngIf="!tcCountMap.has(previewUs.id)">Aucun CT généré</span>
         <div class="us-modal-footer-actions">
           <button class="btn-modal-cancel" (click)="closeUsPreview()">Fermer</button>
-          <button class="btn-modal-tc" (click)="openTcFromPreview(previewUs)">
+          <button class="btn-modal-tc"
+                  (click)="openTcFromPreview(previewUs)"
+                  [disabled]="!previewUs.description || !previewUs.description.trim()"
+                  [title]="(!previewUs.description || !previewUs.description.trim()) ? 'Aucun critère d\'acceptation — génération impossible' : ''">
             <svg width="12" height="12" viewBox="0 0 14 14" fill="none"><rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.3"/><path d="M5 7l2 2 4-4" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>
             {{ tcCountMap.has(previewUs.id) ? 'Voir les CT' : 'Générer les CT' }}
           </button>

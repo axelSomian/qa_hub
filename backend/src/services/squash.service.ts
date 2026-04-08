@@ -29,6 +29,29 @@ export const getSquashProjects = async (squashUrl: string, squashToken: string) 
   return (data._embedded?.projects || []).map((p: any) => ({ id: p.id, name: p.name }));
 };
 
+export const createSquashProject = async (
+  squashUrl: string,
+  squashToken: string,
+  name: string,
+  description?: string
+): Promise<{ id: number; name: string }> => {
+  const label = name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  const data: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/projects`,
+    squashToken,
+    {
+      method: 'POST',
+      body: JSON.stringify({
+        _type: 'project',
+        name: name.trim(),
+        label,
+        description: description?.trim() || '',
+      }),
+    }
+  );
+  return { id: data.id, name: data.name };
+};
+
 const priorityToImportance = (priority: string): string =>
   ({ high: 'HIGH', medium: 'MEDIUM', low: 'LOW' }[priority] || 'MEDIUM');
 

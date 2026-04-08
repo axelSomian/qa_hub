@@ -35,8 +35,9 @@ export const getUserStories = async (
     const all: any[] = [];
 
     while (all.length < total) {
+      const filters = encodeURIComponent(JSON.stringify([{ type_id: { operator: '=', values: ['6', '7'] } }]));
       const res = await fetch(
-        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&page=${page}`,
+        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&page=${page}&filters=${filters}`,
         { headers: getHeaders(token) }
       );
 
@@ -71,10 +72,17 @@ const hoursToIso = (hours: number): string => {
   return m > 0 ? `PT${h}H${m}M` : `PT${h}H`;
 };
 
-const priorityMap: Record<string, string> = {
-  high:   'Urgent',
-  medium: 'Normal',
-  low:    'Low',
+const priorityLabelMap: Record<string, string> = {
+  high:   'Haute',
+  medium: 'Normale',
+  low:    'Basse',
+};
+
+// IDs priorités OpenProject : 7=Low, 8=Normal, 9=High
+const priorityHrefMap: Record<string, string> = {
+  high:   '/api/v3/priorities/9',
+  medium: '/api/v3/priorities/8',
+  low:    '/api/v3/priorities/7',
 };
 
 // Créer une tâche "Test Execution" dans OpenProject liée à une US
@@ -85,16 +93,21 @@ export const createOpTask = async (
   usId: number,
   usTitle: string,
   priority: string = 'medium',
-  estimatedHours?: number
+  estimatedHours?: number,
+  assigneeId?: number
 ): Promise<{ id: number; subject: string; url: string }> => {
   const body: any = {
     subject: `Test Execution — ${usTitle}`,
-    description: { raw: `Criticité : ${priorityMap[priority] || 'Normal'}` },
+    description: { raw: `Criticité : ${priorityLabelMap[priority] || 'Normale'}` },
+    percentageDone: 100,
     estimatedTime: estimatedHours ? hoursToIso(estimatedHours) : undefined,
     _links: {
-      project: { href: `/api/v3/projects/${projectId}` },
-      type:    { href: '/api/v3/types/1' },
-      parent:  { href: `/api/v3/work_packages/${usId}` },
+      project:  { href: `/api/v3/projects/${projectId}` },
+      type:     { href: '/api/v3/types/1' },
+      parent:   { href: `/api/v3/work_packages/${usId}` },
+      status:   { href: '/api/v3/statuses/7' },
+      priority: { href: priorityHrefMap[priority] || '/api/v3/priorities/8' },
+      ...(assigneeId ? { assignee: { href: `/api/v3/users/${assigneeId}` } } : {}),
     },
   };
   if (!body.estimatedTime) delete body.estimatedTime;
@@ -141,6 +154,23 @@ export const createTimeEntry = async (
   return { id: data.id, hours: data.hours };
 };
 
+// Ajouter un commentaire sur un work package
+export const addComment = async (
+  baseUrl: string,
+  token: string,
+  workPackageId: number,
+  comment: string
+): Promise<{ id: number }> => {
+  const res = await fetch(`${baseUrl}/api/v3/work_packages/${workPackageId}/activities`, {
+    method: 'POST',
+    headers: getHeaders(token),
+    body: JSON.stringify({ comment: { raw: comment } }),
+  });
+  const data: any = await res.json();
+  if (!res.ok) throw new Error(data.message || `OpenProject Activity error ${res.status}`);
+  return { id: data.id };
+};
+
 // Tester la connexion
 export const testConnection = async (baseUrl: string, token: string) => {
   const res = await fetch(`${baseUrl}/api/v3/users/me`, {
@@ -155,6 +185,7 @@ export const testConnection = async (baseUrl: string, token: string) => {
   return {
     connected: true,
     user: {
+      id: user.id,
       name: user.name,
       email: user.email,
     },

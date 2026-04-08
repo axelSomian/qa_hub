@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getSquashProjects, pushTestCasesToSquash } from '../services/squash.service';
+import { getSquashProjects, pushTestCasesToSquash, createSquashProject } from '../services/squash.service';
 import { createOpTask, createTimeEntry } from '../services/openproject.service';
 
 const router = Router();
@@ -29,6 +29,21 @@ router.get('/projects', async (req: Request, res: Response) => {
   try {
     const projects = await getSquashProjects(url, token);
     res.json(projects);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST /api/squash/projects — créer un projet Squash TM
+router.post('/projects', async (req: Request, res: Response) => {
+  const { url, token } = getSquashCreds(req);
+  const { name, description } = req.body;
+  if (!url || !token) { res.status(400).json({ error: 'SQUASH_URL et SQUASH_TOKEN requis' }); return; }
+  if (!validateUrl(url)) { res.status(400).json({ error: `URL Squash invalide` }); return; }
+  if (!name || !name.trim()) { res.status(400).json({ error: 'Nom du projet requis' }); return; }
+  try {
+    const project = await createSquashProject(url, token, name, description);
+    res.status(201).json(project);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -71,7 +86,8 @@ router.post('/push', async (req: Request, res: Response) => {
           Number(opTask.usId),
           opTask.usTitle || 'User Story',
           opTask.priority || 'medium',
-          opTask.estimatedHours ? Number(opTask.estimatedHours) : undefined
+          opTask.estimatedHours ? Number(opTask.estimatedHours) : undefined,
+          opTask.assigneeId ? Number(opTask.assigneeId) : undefined
         );
         opResult = { taskId: wp.id, taskUrl: wp.url, subject: wp.subject };
 

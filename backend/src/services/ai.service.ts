@@ -14,25 +14,34 @@ export interface TestCase {
 
 const GROQ_URL = `https://api.groq.com/openai/v1/chat/completions`;
 
-const callGroq = async (prompt: string): Promise<string> => {
-  const res = await fetch(GROQ_URL, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
-    },
-    body: JSON.stringify({
-      model: 'llama-3.3-70b-versatile',
-      messages: [{ role: 'user', content: prompt }],
-      temperature: 0.2,
-    }),
-  });
-  if (!res.ok) {
-    const err: any = await res.json();
-    throw new Error(`Groq API error: ${err?.error?.message || res.statusText}`);
+const callGroq = async (prompt: string, attempt = 1): Promise<string> => {
+  try {
+    const res = await fetch(GROQ_URL, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${process.env.GROQ_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.2,
+      }),
+    });
+    if (!res.ok) {
+      const err: any = await res.json();
+      throw new Error(`Groq API error: ${err?.error?.message || res.statusText}`);
+    }
+    const data: any = await res.json();
+    return data.choices[0].message.content.trim();
+  } catch (err: any) {
+    const retryable = err.message?.includes('socket hang up') || err.message?.includes('ECONNRESET') || err.message?.includes('fetch failed');
+    if (retryable && attempt < 3) {
+      await new Promise(r => setTimeout(r, 1000 * attempt));
+      return callGroq(prompt, attempt + 1);
+    }
+    throw err;
   }
-  const data: any = await res.json();
-  return data.choices[0].message.content.trim();
 };
 
 const parseJson = (content: string): any => {

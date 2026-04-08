@@ -40,6 +40,7 @@ export interface OpTaskPayload {
   hours: number;
   estimatedHours: number;
   comment?: string;
+  assigneeId?: number;
 }
 
 @Injectable({ providedIn: 'root' })
@@ -69,6 +70,10 @@ export class SquashService {
 
   getProjects(): Observable<SquashProject[]> {
     return this.http.get<SquashProject[]>(`${this.apiUrl}/projects`, { headers: this.headers });
+  }
+
+  createProject(name: string, description?: string): Observable<SquashProject> {
+    return this.http.post<SquashProject>(`${this.apiUrl}/projects`, { name, description }, { headers: this.headers });
   }
 
   push(tcIds: string[], projectId: number, folderName?: string, opTask?: OpTaskPayload): Observable<PushResponse> {
