@@ -1,6 +1,4 @@
 import fetch from 'node-fetch';
-import fs from 'fs';
-import path from 'path';
 
 export interface TestStep {
   action: string;
@@ -15,28 +13,6 @@ export interface TestCase {
 }
 
 const GROQ_URL = `https://api.groq.com/openai/v1/chat/completions`;
-
-// Load ISTQB CTFL v4.0 test design techniques once at startup
-// Source: backend/ressources/ISTQB_CTFL_Syllabus.md — sections 4.2, 4.3, 4.4
-const loadIstqbGuidelines = (): string => {
-  try {
-    const filePath = path.join(__dirname, '../../ressources/ISTQB_CTFL_Syllabus.md');
-    const lines = fs.readFileSync(filePath, 'utf-8').split('\n');
-    // Extract sections 4.2 (boîte noire), 4.3 (boîte blanche overview), 4.4 (basées sur l'expérience)
-    // Lines identified: 4.2 starts ~3091, 4.4 ends ~3519
-    const relevant = lines.slice(3090, 3519).join('\n');
-    // Strip page markers and blank-line clusters to reduce token usage
-    return relevant
-      .replace(/v4\.0\s*\n[\s\S]*?© International Software Testing Qualifications Board\s*\n/g, '')
-      .replace(/Testeur certifié\s*\nNiveau Fondation\s*\n/g, '')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-  } catch {
-    return '';
-  }
-};
-
-const ISTQB_GUIDELINES = loadIstqbGuidelines();
 
 const callGroq = async (prompt: string): Promise<string> => {
   const res = await fetch(GROQ_URL, {
@@ -64,16 +40,13 @@ const parseJson = (content: string): any => {
   catch { return JSON.parse(content.replace(/```json|```/g, '').trim()); }
 };
 
-const istqbBlock = ISTQB_GUIDELINES
-  ? `\n═══ RÉFÉRENTIEL ISTQB CTFL v4.0 — TECHNIQUES DE CONCEPTION ═══\nApplique obligatoirement les techniques suivantes lors de la génération :\n${ISTQB_GUIDELINES}\n═══════════════════════════════════════════════════════════════\n`
-  : '';
 
 export const generateTestCases = async (
   usTitle: string,
   usDescription: string
 ): Promise<TestCase[]> => {
   const prompt = `Tu es un expert QA senior certifié ISTQB. Ton rôle est de générer des cas de test IMPACTANTS, RÉALISTES et PARFAITEMENT ADAPTÉS à la User Story fournie.
-${istqbBlock}
+
 ═══ USER STORY ═══
 Titre : ${usTitle}
 
@@ -132,7 +105,7 @@ export const generateSpecificTestCase = async (
   criteria: string
 ): Promise<TestCase> => {
   const prompt = `Tu es un expert QA senior certifié ISTQB. Génère UN SEUL cas de test précis, réaliste et impactant basé sur le critère spécifique fourni.
-${istqbBlock}
+
 ═══ USER STORY ═══
 Titre : ${usTitle}
 Description : ${usDescription}
