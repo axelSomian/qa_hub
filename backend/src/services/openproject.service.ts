@@ -35,9 +35,8 @@ export const getUserStories = async (
     const all: any[] = [];
 
     while (all.length < total) {
-      const filters = encodeURIComponent(JSON.stringify([{ type_id: { operator: '=', values: ['6', '7'] } }]));
       const res = await fetch(
-        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&page=${page}&filters=${filters}`,
+        `${baseUrl}/api/v3/projects/${projectId}/work_packages?pageSize=${PAGE_SIZE}&page=${page}`,
         { headers: getHeaders(token) }
       );
 

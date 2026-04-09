@@ -1,5 +1,5 @@
 import { Router, Request, Response } from 'express';
-import { getSquashProjects, getSquashTestCases, getSquashTestCaseDetail, pushTestCasesToSquash, createSquashProject } from '../services/squash.service';
+import { getSquashProjects, getSquashTestCases, getSquashTestCaseDetail, getSquashLibraryRoot, getSquashFolderContent, pushTestCasesToSquash, createSquashProject } from '../services/squash.service';
 import { createOpTask, createTimeEntry } from '../services/openproject.service';
 
 const router = Router();
@@ -29,6 +29,32 @@ router.get('/projects', async (req: Request, res: Response) => {
   try {
     const projects = await getSquashProjects(url, token);
     res.json(projects);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/squash/projects/:id/library — racine de la librairie (dossiers + TCs)
+router.get('/projects/:id/library', async (req: Request, res: Response) => {
+  const { url, token } = getSquashCreds(req);
+  if (!url || !token) { res.status(400).json({ error: 'Credentials Squash requis' }); return; }
+  if (!validateUrl(url)) { res.status(400).json({ error: 'URL Squash invalide' }); return; }
+  try {
+    const nodes = await getSquashLibraryRoot(url, token, Number(req.params.id));
+    res.json(nodes);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET /api/squash/folders/:id/content — contenu d'un dossier
+router.get('/folders/:id/content', async (req: Request, res: Response) => {
+  const { url, token } = getSquashCreds(req);
+  if (!url || !token) { res.status(400).json({ error: 'Credentials Squash requis' }); return; }
+  if (!validateUrl(url)) { res.status(400).json({ error: 'URL Squash invalide' }); return; }
+  try {
+    const nodes = await getSquashFolderContent(url, token, Number(req.params.id));
+    res.json(nodes);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

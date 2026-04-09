@@ -1,6 +1,7 @@
 import { Component, OnInit, HostListener } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
+import { RouterLink, RouterLinkActive } from '@angular/router';
 import {
   OpenprojectService,
   Project,
@@ -8,7 +9,7 @@ import {
 } from '../../core/services/openproject.service';
 import { AiService, TestCase, TestStep } from '../../core/services/ai.service';
 import { SquashService, SquashProject, PushResponse, OpTaskPayload } from '../../core/services/squash.service';
-import { ExecutionService, ExecutionSession, Execution, ExecutionStep, SessionReport } from '../../core/services/execution.service';
+import { ExecutionService, ExecutionSession, Execution, SessionReport } from '../../core/services/execution.service';
 import { SafeUrlPipe } from '../../core/pipes/safe-url.pipe';
 
 const PAGE_SIZE = 8;
@@ -16,7 +17,7 @@ const PAGE_SIZE = 8;
 @Component({
   selector: 'app-projects',
   standalone: true,
-  imports: [CommonModule, FormsModule, SafeUrlPipe],
+  imports: [CommonModule, FormsModule, SafeUrlPipe, RouterLink, RouterLinkActive],
   templateUrl: './projects.component.html',
   styleUrl: './projects.component.scss',
 })
@@ -24,7 +25,7 @@ export class ProjectsComponent implements OnInit {
   opUrl = localStorage.getItem('op_url') || '';
   opToken = localStorage.getItem('op_token') || '';
   connectedUserId: number | null = Number(localStorage.getItem('op_user_id')) || null;
-  isConnected = false;
+  isConnected = !!(localStorage.getItem('op_url') && localStorage.getItem('op_token'));
   connectionError = '';
   connectionLoading = false;
 
@@ -154,7 +155,30 @@ export class ProjectsComponent implements OnInit {
 
   ngOnInit(): void {
     this.squashConfigured = this.squashService.hasCredentials;
-    if (this.opUrl && this.opToken) this.connect();
+    if (this.opUrl && this.opToken) this.reconnect();
+  }
+
+  // Reconnexion silencieuse au retour de navigation — ne retire pas isConnected si ça échoue
+  private reconnect(): void {
+    this.connectionLoading = true;
+    this.opService.testConnection(this.opUrl, this.opToken).subscribe({
+      next: (res: any) => {
+        this.isConnected = true;
+        this.connectionLoading = false;
+        if (res?.user?.id) {
+          this.connectedUserId = res.user.id;
+          localStorage.setItem('op_user_id', String(res.user.id));
+        }
+        if (this.projects.length === 0) this.loadProjects();
+      },
+      error: () => {
+        this.connectionLoading = false;
+        // On laisse isConnected tel quel (déjà true si credentials présents)
+        // Seulement forcer logout si credentials absents
+        if (!this.opUrl || !this.opToken) this.isConnected = false;
+        else if (this.projects.length === 0) this.loadProjects();
+      },
+    });
   }
 
   connect(): void {

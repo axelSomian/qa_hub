@@ -1,0 +1,547 @@
+<div class="exec-page">
+
+  <!-- ── CONNEXION SQUASH ─────────────────────────────── -->
+  <div class="connect-wrap" *ngIf="!squashConfigured">
+    <div class="connect-card">
+      <div class="connect-logo">
+        <svg width="28" height="28" viewBox="0 0 32 32" fill="none">
+          <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+          <path d="M8 16h16M16 8v16" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+        </svg>
+        <span>QA Hub — Exécution</span>
+      </div>
+      <h1>Connexion Squash TM</h1>
+      <p class="subtitle">Connectez votre instance Squash TM pour exécuter vos cas de test</p>
+
+      <div class="field">
+        <label>URL de l'instance</label>
+        <input type="text" [(ngModel)]="squashUrlInput" placeholder="https://squash.example.com"/>
+      </div>
+      <div class="field">
+        <label>Token API</label>
+        <input type="password" [(ngModel)]="squashTokenInput" placeholder="••••••••••••••••"/>
+      </div>
+
+      <div class="error-msg" *ngIf="squashConfigError">{{ squashConfigError }}</div>
+
+      <button class="btn-connect" (click)="configureSquash()"
+        [disabled]="squashConnecting || !squashUrlInput || !squashTokenInput">
+        <span *ngIf="!squashConnecting">Se connecter</span>
+        <span *ngIf="squashConnecting" class="spinner"></span>
+      </button>
+    </div>
+  </div>
+
+  <!-- ── DASHBOARD ─────────────────────────────────────── -->
+  <div class="dashboard" *ngIf="squashConfigured">
+
+    <!-- Sidebar -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <div class="brand">
+          <svg width="20" height="20" viewBox="0 0 32 32" fill="none">
+            <rect width="32" height="32" rx="8" fill="#1a1a2e"/>
+            <path d="M8 16h16M16 8v16" stroke="#6366f1" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+          <span>QA Hub</span>
+        </div>
+        <button class="btn-icon" (click)="disconnectSquash()" title="Déconnecter">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+            <path d="M2 2l10 10M12 2L2 12" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <a class="sidebar-nav-item" [routerLink]="['/']" routerLinkActive="active" [routerLinkActiveOptions]="{exact:true}">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <rect x="2" y="3" width="10" height="9" rx="1.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M5 6h4M5 9h2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          Gestion CTs
+        </a>
+        <a class="sidebar-nav-item" [routerLink]="['/execution']" routerLinkActive="active">
+          <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+            <path d="M3 2l8 4.5L3 11V2z" fill="currentColor"/>
+          </svg>
+          Exécution
+        </a>
+      </nav>
+
+      <!-- Historique -->
+      <div class="sidebar-history-btn">
+        <button class="btn-history" [class.active]="view === 'history' || view === 'history-detail'" (click)="loadHistory()">
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+            <circle cx="7" cy="7" r="5.5" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M7 4v3.5l2 2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/>
+          </svg>
+          Historique
+        </button>
+      </div>
+
+      <!-- Projects list -->
+      <div class="sidebar-section">
+        <div class="section-label">Projets Squash</div>
+        <div class="spinner-wrap" *ngIf="projectsLoading"><span class="spinner"></span></div>
+        <div class="projects-error" *ngIf="projectsError">
+          <span>{{ projectsError }}</span>
+          <button class="btn-retry" (click)="loadProjects()">Réessayer</button>
+        </div>
+        <ul class="project-list" *ngIf="!projectsLoading && !projectsError">
+          <li *ngFor="let p of projects"
+            class="project-item"
+            [class.active]="selectedProjectId === p.id"
+            (click)="selectProject(p.id)">
+            <span class="project-dot"></span>
+            {{ p.name }}
+          </li>
+        </ul>
+        <div class="empty-state" *ngIf="!projectsLoading && !projectsError && projects.length === 0">
+          Aucun projet disponible
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="main">
+
+      <!-- ── VUE SÉLECTION ──────────────────────────────── -->
+      <ng-container *ngIf="view === 'select'">
+        <div class="main-header">
+          <h2>Cas de test
+            <span class="badge" *ngIf="selectedCount > 0">{{ selectedCount }} sélectionné(s)</span>
+          </h2>
+          <div class="header-actions">
+            <div class="search-wrap">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <circle cx="6" cy="6" r="4.5" stroke="#888" stroke-width="1.2"/>
+                <path d="M9.5 9.5l2.5 2.5" stroke="#888" stroke-width="1.2" stroke-linecap="round"/>
+              </svg>
+              <input type="text" [(ngModel)]="searchTerm" placeholder="Rechercher un CT..."/>
+            </div>
+            <button class="btn-primary" (click)="launchExecution()"
+              [disabled]="selectedCount === 0 || execLaunching">
+              <span *ngIf="!execLaunching">
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
+                  <path d="M3 2l8 4.5L3 11V2z" fill="currentColor"/>
+                </svg>
+                Exécuter ({{ selectedCount }})
+              </span>
+              <span *ngIf="execLaunching" class="spinner"></span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Pas de projet sélectionné -->
+        <div class="empty-project" *ngIf="!selectedProjectId">
+          <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+            <circle cx="20" cy="20" r="18" stroke="#e0e0e0" stroke-width="2"/>
+            <path d="M14 20h12M20 14v12" stroke="#ccc" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <p>Sélectionnez un projet dans la liste à gauche</p>
+        </div>
+
+        <div class="spinner-wrap tall" *ngIf="treeLoading"><span class="spinner"></span></div>
+        <div class="error-msg" *ngIf="treeError">{{ treeError }}</div>
+
+        <!-- ── RÉSULTATS RECHERCHE ──────────────────────── -->
+        <div class="tree-wrap" *ngIf="selectedProjectId && !treeLoading && !treeError && searchTerm">
+          <div class="search-results-label">{{ filteredTcs.length }} résultat(s) pour "{{ searchTerm }}"</div>
+          <div class="empty-state" *ngIf="filteredTcs.length === 0">Aucun cas de test trouvé</div>
+          <div class="tc-row" *ngFor="let tc of filteredTcs"
+            [class.selected]="selectedTcIds.has(tc.id)"
+            (click)="toggleTc(tc.id)">
+            <input type="checkbox" [checked]="selectedTcIds.has(tc.id)" (click)="$event.stopPropagation()"/>
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" class="tc-icon">
+              <rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/>
+              <path d="M5 5h4M5 8h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+            </svg>
+            <div class="tc-info">
+              <span class="tc-name">{{ tc.name }}</span>
+              <span class="tc-ref" *ngIf="tc.reference">{{ tc.reference }}</span>
+              <span class="tc-importance" [class]="importanceClass(tc.importance)">{{ tc.importance }}</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── ARBRE DE DOSSIERS ───────────────────────── -->
+        <div class="tree-wrap" *ngIf="selectedProjectId && !treeLoading && !treeError && !searchTerm">
+          <div class="empty-state" *ngIf="treeRoots.length === 0">Bibliothèque vide</div>
+          <ng-container *ngFor="let node of treeRoots">
+            <ng-container *ngTemplateOutlet="treeNodeTpl; context: { node: node, depth: 0 }"></ng-container>
+          </ng-container>
+        </div>
+
+      </ng-container>
+
+      <!-- Template récursif noeud arbre -->
+      <ng-template #treeNodeTpl let-node="node" let-depth="depth">
+
+        <!-- DOSSIER -->
+        <div *ngIf="node.type === 'folder'" class="tree-node folder-node"
+          [style.padding-left.px]="16 + depth * 18">
+          <div class="folder-row" (click)="toggleFolder(node)">
+            <span class="folder-toggle">
+              <svg *ngIf="!node.expanded" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M3 2l4 3-4 3V2z" fill="#888"/>
+              </svg>
+              <svg *ngIf="node.expanded" width="10" height="10" viewBox="0 0 10 10" fill="none">
+                <path d="M2 3l3 4 3-4H2z" fill="#888"/>
+              </svg>
+            </span>
+            <input type="checkbox" class="folder-check"
+              [checked]="folderSelectionState(node) === 'all'"
+              [indeterminate]="folderSelectionState(node) === 'some'"
+              (click)="$event.stopPropagation(); toggleFolder_select(node)"
+              *ngIf="node.loaded && (node.children?.length ?? 0) > 0"/>
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" class="folder-icon">
+              <path d="M1 3.5A1.5 1.5 0 0 1 2.5 2H5l2 2h4.5A1.5 1.5 0 0 1 13 5.5V11a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 1 11V3.5z" fill="#fbbf24" stroke="#f59e0b" stroke-width="0.5"/>
+            </svg>
+            <span class="folder-name">{{ node.name }}</span>
+            <span class="spinner sm" *ngIf="node.loading"></span>
+          </div>
+
+          <!-- Contenu du dossier -->
+          <div *ngIf="node.expanded && node.loaded">
+            <div class="empty-state sm" *ngIf="(node.children?.length ?? 0) === 0">Dossier vide</div>
+            <ng-container *ngFor="let child of node.children">
+              <ng-container *ngTemplateOutlet="treeNodeTpl; context: { node: child, depth: depth + 1 }"></ng-container>
+            </ng-container>
+          </div>
+        </div>
+
+        <!-- CAS DE TEST -->
+        <div *ngIf="node.type === 'tc'" class="tree-node tc-row"
+          [class.selected]="selectedTcIds.has(node.id)"
+          [style.padding-left.px]="16 + depth * 18"
+          (click)="toggleTc(node.id)">
+          <input type="checkbox" [checked]="selectedTcIds.has(node.id)" (click)="$event.stopPropagation()"/>
+          <svg width="13" height="13" viewBox="0 0 14 14" fill="none" class="tc-icon">
+            <rect x="2" y="2" width="10" height="10" rx="2" stroke="currentColor" stroke-width="1.2"/>
+            <path d="M5 5h4M5 8h2" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+          </svg>
+          <div class="tc-info">
+            <span class="tc-name">{{ node.name }}</span>
+            <span class="tc-ref" *ngIf="node.reference">{{ node.reference }}</span>
+            <span class="tc-importance" [class]="importanceClass(node.importance)">{{ node.importance }}</span>
+          </div>
+        </div>
+
+      </ng-template>
+
+      <!-- ── VUE EXÉCUTION ──────────────────────────────── -->
+      <ng-container *ngIf="view === 'running'">
+        <div class="exec-header">
+          <div class="exec-progress-wrap">
+            <span class="exec-counter">{{ execCurrentIdx + 1 }} / {{ execQueue.length }}</span>
+            <div class="exec-progress-bar">
+              <div class="exec-progress-fill" [style.width.%]="execProgress"></div>
+            </div>
+          </div>
+          <button class="btn-abort" (click)="execAbort()">Abandonner</button>
+        </div>
+
+        <div class="exec-split" *ngIf="execCurrentTc">
+          <!-- Panneau gauche — navigateur intégré -->
+          <div class="exec-browser">
+            <div class="browser-bar">
+              <input #urlInput type="text" class="browser-url"
+                placeholder="https://..."
+                (keydown.enter)="execNavigateIframe(urlInput.value)"/>
+              <button class="btn-icon" (click)="execNavigateIframe(urlInput.value)" title="Naviguer">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M3 7h8M8 4l3 3-3 3" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <button class="btn-icon" (click)="execResetIframe()" title="Réinitialiser">
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                  <path d="M2 7a5 5 0 1 1 1.4 3.5" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+                  <path d="M2 11V7h4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <a class="btn-icon btn-newtab" [href]="execIframeUrl" target="_blank" rel="noopener"
+                 [class.disabled]="execIframeUrl === 'about:blank'"
+                 title="Ouvrir dans un nouvel onglet">
+                <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                  <path d="M6 2H2v10h10V8M8 2h4v4M6 8l4-4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </a>
+            </div>
+            <div class="iframe-blocked-hint" *ngIf="execIframeBlocked">
+              <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+                <circle cx="7" cy="7" r="5.5" stroke="#b45309" stroke-width="1.2"/>
+                <path d="M7 4v3.5M7 9.2v.3" stroke="#b45309" stroke-width="1.4" stroke-linecap="round"/>
+              </svg>
+              Ce site bloque l'affichage dans un cadre.
+              <a [href]="execIframeUrl" target="_blank" rel="noopener">Ouvrir dans un nouvel onglet</a>
+            </div>
+            <iframe [src]="execIframeUrl | safeUrl" class="exec-iframe" title="Navigateur de test"
+              (load)="onIframeLoad($event)"></iframe>
+          </div>
+
+          <!-- Panneau droit — étapes -->
+          <div class="exec-steps-panel">
+            <div class="exec-tc-title">{{ execCurrentTc.name }}</div>
+            <div class="exec-tc-ref">{{ execCurrentTc.reference }}</div>
+
+            <div class="steps-list">
+              <div class="step-item"
+                *ngFor="let step of execCurrentSteps; let i = index"
+                [class.active]="i === execStepIdx"
+                [class.done]="i < execStepIdx">
+
+                <div class="step-number">{{ step.order }}</div>
+                <div class="step-body">
+                  <div class="step-action">
+                    <div class="step-label">Action</div>
+                    <div class="step-text" [innerHTML]="step.action"></div>
+                  </div>
+                  <div class="step-expected">
+                    <div class="step-label">Résultat attendu</div>
+                    <div class="step-text" [innerHTML]="step.expected_result"></div>
+                  </div>
+
+                  <!-- Résultat déjà enregistré -->
+                  <div class="step-result" *ngIf="execStepResults.has(step.id)">
+                    <span class="result-badge" [class]="execStepResults.get(step.id)!.status">
+                      {{ execStepResults.get(step.id)!.status }}
+                    </span>
+                    <span class="result-comment" *ngIf="execStepResults.get(step.id)!.comment">
+                      — {{ execStepResults.get(step.id)!.comment }}
+                    </span>
+                  </div>
+
+                  <!-- Boutons d'action pour l'étape active -->
+                  <div class="step-actions" *ngIf="i === execStepIdx && !execCommentOpen">
+                    <button class="btn-step passed" (click)="execHandleStep('passed')">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 6l3 3 5-5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                      </svg>
+                      Passé
+                    </button>
+                    <button class="btn-step failed" (click)="execHandleStep('failed')">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 2l8 8M10 2L2 10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                      </svg>
+                      Échoué
+                    </button>
+                    <button class="btn-step blocked" (click)="execHandleStep('blocked')">
+                      <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                        <path d="M6 2v4M6 8v1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                      </svg>
+                      Bloqué
+                    </button>
+                  </div>
+
+                  <!-- Saisie commentaire (échec / blocage) -->
+                  <div class="step-comment-box" *ngIf="i === execStepIdx && execCommentOpen">
+                    <div class="comment-label">
+                      Commentaire pour <strong>{{ execPendingStatus === 'failed' ? 'Échoué' : 'Bloqué' }}</strong>
+                    </div>
+                    <textarea [(ngModel)]="execPendingComment" rows="3" placeholder="Décrivez le problème rencontré..."></textarea>
+                    <div class="comment-actions">
+                      <button class="btn-sm" (click)="execCommentOpen = false; execPendingStatus = null">Annuler</button>
+                      <button class="btn-sm primary" (click)="execSubmitStep(execPendingStatus!, execPendingComment)">
+                        Confirmer
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="empty-state" *ngIf="execCurrentSteps.length === 0">
+                Aucune étape définie pour ce cas de test
+              </div>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+
+      <!-- ── VUE RAPPORT ─────────────────────────────────── -->
+      <ng-container *ngIf="view === 'report' && execReport">
+        <div class="report-wrap">
+          <div class="report-header">
+            <div class="report-title">Rapport d'exécution</div>
+            <div class="report-session">{{ execReport.session.name }}</div>
+            <div class="report-date">{{ execReport.session.started_at | date:'dd/MM/yyyy HH:mm' }}</div>
+          </div>
+
+          <div class="report-stats">
+            <div class="stat-card passed">
+              <div class="stat-num">{{ execReport.report.passed }}</div>
+              <div class="stat-label">Passés</div>
+            </div>
+            <div class="stat-card failed">
+              <div class="stat-num">{{ execReport.report.failed }}</div>
+              <div class="stat-label">Échoués</div>
+            </div>
+            <div class="stat-card blocked">
+              <div class="stat-num">{{ execReport.report.blocked }}</div>
+              <div class="stat-label">Bloqués</div>
+            </div>
+            <div class="stat-card total">
+              <div class="stat-num">{{ execReport.report.total }}</div>
+              <div class="stat-label">Total</div>
+            </div>
+          </div>
+
+          <div class="report-bar">
+            <div class="bar-passed" [style.flex]="execReport.report.passed"></div>
+            <div class="bar-failed" [style.flex]="execReport.report.failed"></div>
+            <div class="bar-blocked" [style.flex]="execReport.report.blocked"></div>
+          </div>
+
+          <table class="report-table">
+            <thead>
+              <tr>
+                <th>Cas de test</th>
+                <th>Priorité</th>
+                <th>Statut</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr *ngFor="let e of execReport.executions">
+                <td>{{ e.tc_title }}</td>
+                <td>
+                  <span class="priority-badge" [class]="priorityClass(e.priority || '')">
+                    {{ e.priority }}
+                  </span>
+                </td>
+                <td>
+                  <span class="status-badge" [class]="e.global_status">{{ e.global_status }}</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- Analyse IA -->
+          <ng-container *ngTemplateOutlet="aiAnalysisTpl; context: { session: execReport.session, onAnalyze: 'current' }"></ng-container>
+
+          <div class="report-actions">
+            <button class="btn-primary" (click)="view = 'select'; execQueue = []">
+              Nouvelle session
+            </button>
+            <button class="btn-sm" (click)="loadHistory()">Voir l'historique</button>
+          </div>
+        </div>
+      </ng-container>
+
+      <!-- ── VUE HISTORIQUE ─────────────────────────────── -->
+      <ng-container *ngIf="view === 'history'">
+        <div class="main-header">
+          <h2>Historique des sessions</h2>
+          <button class="btn-sm" (click)="view = 'select'">← Retour</button>
+        </div>
+        <div class="spinner-wrap tall" *ngIf="historyLoading"><span class="spinner"></span></div>
+        <div class="history-list" *ngIf="!historyLoading">
+          <div class="empty-state" *ngIf="historySessions.length === 0">Aucune session enregistrée</div>
+          <div class="history-card" *ngFor="let s of historySessions" (click)="openHistoryDetail(s)">
+            <div class="history-card-header">
+              <div class="history-name">{{ s.name }}</div>
+              <span class="session-status" [class]="s.status">{{ s.status }}</span>
+            </div>
+            <div class="history-meta">
+              <span>{{ s.started_at | date:'dd/MM/yyyy HH:mm' }}</span>
+              <span *ngIf="s.squash_project_name">· {{ s.squash_project_name }}</span>
+            </div>
+            <div class="history-stats">
+              <span class="hs passed">{{ s.passed }} passés</span>
+              <span class="hs failed">{{ s.failed }} échoués</span>
+              <span class="hs blocked">{{ s.blocked }} bloqués</span>
+              <span class="hs total">{{ s.total }} total</span>
+            </div>
+          </div>
+        </div>
+      </ng-container>
+
+      <!-- ── VUE DÉTAIL HISTORIQUE ──────────────────────── -->
+      <ng-container *ngIf="view === 'history-detail'">
+        <div class="main-header">
+          <h2>{{ historyDetail?.session?.name || '...' }}</h2>
+          <button class="btn-sm" (click)="view = 'history'">← Historique</button>
+        </div>
+        <div class="spinner-wrap tall" *ngIf="historyDetailLoading"><span class="spinner"></span></div>
+        <div class="report-wrap" *ngIf="!historyDetailLoading && historyDetail">
+          <div class="report-header">
+            <div class="report-date">{{ historyDetail.session.started_at | date:'dd/MM/yyyy HH:mm' }}</div>
+            <div class="report-date" *ngIf="historyDetail.session.squash_project_name">
+              Projet : {{ historyDetail.session.squash_project_name }}
+            </div>
+          </div>
+
+          <div class="report-stats">
+            <div class="stat-card passed"><div class="stat-num">{{ historyDetail.report.passed }}</div><div class="stat-label">Passés</div></div>
+            <div class="stat-card failed"><div class="stat-num">{{ historyDetail.report.failed }}</div><div class="stat-label">Échoués</div></div>
+            <div class="stat-card blocked"><div class="stat-num">{{ historyDetail.report.blocked }}</div><div class="stat-label">Bloqués</div></div>
+            <div class="stat-card total"><div class="stat-num">{{ historyDetail.report.total }}</div><div class="stat-label">Total</div></div>
+          </div>
+
+          <div class="report-bar">
+            <div class="bar-passed" [style.flex]="historyDetail.report.passed"></div>
+            <div class="bar-failed" [style.flex]="historyDetail.report.failed"></div>
+            <div class="bar-blocked" [style.flex]="historyDetail.report.blocked"></div>
+          </div>
+
+          <table class="report-table">
+            <thead><tr><th>Cas de test</th><th>Priorité</th><th>Statut</th></tr></thead>
+            <tbody>
+              <tr *ngFor="let e of historyDetail.executions">
+                <td>{{ e.tc_title || ('CT #' + e.squash_tc_id) }}</td>
+                <td><span class="priority-badge" [class]="priorityClass(e.tc_importance || '')">{{ e.tc_importance }}</span></td>
+                <td><span class="status-badge" [class]="e.global_status">{{ e.global_status }}</span></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <ng-container *ngTemplateOutlet="aiAnalysisTpl; context: { session: historyDetail.session, onAnalyze: 'history' }"></ng-container>
+        </div>
+      </ng-container>
+
+      <!-- ── TEMPLATE ANALYSE IA ────────────────────────── -->
+      <ng-template #aiAnalysisTpl let-session="session" let-onAnalyze="onAnalyze">
+        <div class="ai-section">
+          <div class="ai-header">
+            <div class="ai-title">
+              <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
+                <path d="M7 1l1.5 3.5L12 5l-2.5 2.5.5 3.5L7 9.5 4 11l.5-3.5L2 5l3.5-.5L7 1z" fill="#6366f1" stroke="#6366f1" stroke-width="0.3"/>
+              </svg>
+              Analyse IA
+            </div>
+            <button class="btn-analyze" (click)="onAnalyze === 'current' ? analyzeCurrentReport() : analyzeWithAI()"
+              [disabled]="aiAnalyzing">
+              <span class="spinner sm" *ngIf="aiAnalyzing"></span>
+              <span *ngIf="!aiAnalyzing">{{ aiAnalysis ? 'Relancer' : 'Analyser' }}</span>
+            </button>
+          </div>
+
+          <div class="error-msg" *ngIf="aiError">{{ aiError }}</div>
+
+          <div class="ai-result" *ngIf="aiAnalysis">
+            <div class="ai-verdict" [class]="verdictClass(aiAnalysis.verdict)">
+              <span class="verdict-label">{{ aiAnalysis.verdict }}</span>
+              <span class="verdict-score">Score : {{ aiAnalysis.score }}/100</span>
+            </div>
+            <p class="ai-resume">{{ aiAnalysis.resume }}</p>
+
+            <div class="ai-lists" *ngIf="aiAnalysis.points_positifs?.length || aiAnalysis.points_negatifs?.length">
+              <div class="ai-list-block" *ngIf="aiAnalysis.points_positifs?.length">
+                <div class="ai-list-label ok">Points positifs</div>
+                <ul><li *ngFor="let p of aiAnalysis.points_positifs">{{ p }}</li></ul>
+              </div>
+              <div class="ai-list-block" *ngIf="aiAnalysis.points_negatifs?.length">
+                <div class="ai-list-label ko">Points négatifs</div>
+                <ul><li *ngFor="let p of aiAnalysis.points_negatifs">{{ p }}</li></ul>
+              </div>
+            </div>
+
+            <div class="ai-reco" *ngIf="aiAnalysis.recommandations?.length">
+              <div class="ai-list-label">Recommandations</div>
+              <ul><li *ngFor="let r of aiAnalysis.recommandations">{{ r }}</li></ul>
+            </div>
+          </div>
+        </div>
+      </ng-template>
+
+    </main>
+  </div>
+</div>

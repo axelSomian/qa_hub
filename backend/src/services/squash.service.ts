@@ -29,6 +29,33 @@ export const getSquashProjects = async (squashUrl: string, squashToken: string) 
   return (data._embedded?.projects || []).map((p: any) => ({ id: p.id, name: p.name }));
 };
 
+const mapNode = (item: any) => ({
+  type: item._type === 'test-case' ? 'tc' : 'folder' as 'tc' | 'folder',
+  id: item.id,
+  name: item.name,
+  reference: item.reference || '',
+  importance: item.importance || 'MEDIUM',
+  status: item.status || '',
+});
+
+export const getSquashLibraryRoot = async (squashUrl: string, squashToken: string, projectId: number) => {
+  const data: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/projects/${projectId}/test-cases-library/content?size=200`,
+    squashToken
+  );
+  const items: any[] = data._embedded?.['test-case-library-content'] || [];
+  return items.map(mapNode);
+};
+
+export const getSquashFolderContent = async (squashUrl: string, squashToken: string, folderId: number) => {
+  const data: any = await squashFetch(
+    `${squashUrl}/api/rest/latest/test-case-folders/${folderId}/content?size=200`,
+    squashToken
+  );
+  const items: any[] = data._embedded?.content || [];
+  return items.map(mapNode);
+};
+
 export const getSquashTestCases = async (squashUrl: string, squashToken: string, projectId: number) => {
   // Récupère les TCs via la librairie du projet
   const data: any = await squashFetch(

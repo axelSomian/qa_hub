@@ -1,21 +1,27 @@
 import { Component, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { Router } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
 import { SquashService, SquashProject } from '../../core/services/squash.service';
 import { ExecutionService, ExecutionSession, Execution, SessionReport } from '../../core/services/execution.service';
 import { SafeUrlPipe } from '../../core/pipes/safe-url.pipe';
 import { environment } from '../../../environments/environment';
 
-interface SquashTc {
+export interface TreeNode {
+  type: 'folder' | 'tc';
   id: number;
   name: string;
-  reference: string;
-  importance: string;
-  status: string;
+  reference?: string;
+  importance?: string;
+  status?: string;
+  // Folder state
+  children?: TreeNode[];
+  loading?: boolean;
+  expanded?: boolean;
+  loaded?: boolean;
+  // TC state (chargé pour exécution)
   steps?: SquashStep[];
-  loadingSteps?: boolean;
 }
 
 interface SquashStep {
@@ -25,12 +31,12 @@ interface SquashStep {
   expected_result: string;
 }
 
-type ExecView = 'select' | 'running' | 'report';
+type ExecView = 'select' | 'running' | 'report' | 'history' | 'history-detail';
 
 @Component({
   selector: 'app-execution-page',
   standalone: true,
-  imports: [CommonModule, FormsModule, SafeUrlPipe],
+  imports: [CommonModule, FormsModule, SafeUrlPipe, RouterLink, RouterLinkActive],
   templateUrl: './execution-page.component.html',
   styleUrl: './execution-page.component.scss',
 })
@@ -44,46 +50,66 @@ export class ExecutionPageComponent implements OnInit {
   squashConnecting = false;
   squashConfigError = '';
 
-  // ── Sélection projet + CTs ────────────────────────
+  // ── Sélection projet ──────────────────────────────
   projects: SquashProject[] = [];
   projectsLoading = false;
+  projectsError = '';
   selectedProjectId: number | null = null;
 
-  testCases: SquashTc[] = [];
-  tcsLoading = false;
-  tcsError = '';
+  // ── Arbre de dossiers / TCs ───────────────────────
+  treeRoots: TreeNode[] = [];
+  treeLoading = false;
+  treeError = '';
   selectedTcIds = new Set<number>();
-
   searchTerm = '';
 
-  get filteredTcs(): SquashTc[] {
-    const term = this.searchTerm.toLowerCase();
-    return term
-      ? this.testCases.filter(tc => tc.name.toLowerCase().includes(term) || tc.reference.toLowerCase().includes(term))
-      : this.testCases;
+  // TCs plats pour recherche
+  get allTcs(): TreeNode[] {
+    const collect = (nodes: TreeNode[]): TreeNode[] =>
+      nodes.flatMap(n => n.type === 'tc' ? [n] : collect(n.children || []));
+    return collect(this.treeRoots);
   }
+
+  get filteredTcs(): TreeNode[] {
+    const term = this.searchTerm.toLowerCase();
+    if (!term) return [];
+    return this.allTcs.filter(tc =>
+      tc.name.toLowerCase().includes(term) ||
+      (tc.reference || '').toLowerCase().includes(term)
+    );
+  }
+
+  get selectedCount(): number { return this.selectedTcIds.size; }
 
   // ── Session d'exécution ───────────────────────────
   view: ExecView = 'select';
   execSession: ExecutionSession | null = null;
-  execQueue: { tc: SquashTc; sessionExecId?: string }[] = [];
+  execQueue: { tc: TreeNode }[] = [];
   execCurrentIdx = 0;
   execStepIdx = 0;
   execStepResults = new Map<number, { status: string; comment: string }>();
   execIframeUrl = 'about:blank';
+  execIframeBlocked = false;
   execCommentOpen = false;
   execPendingStatus: 'failed' | 'blocked' | null = null;
   execPendingComment = '';
   execLaunching = false;
   execReport: SessionReport | null = null;
 
-  // Squash campaign tracking
   squashCampaignId: number | null = null;
-  squashTpiMap = new Map<number, number>(); // tcId → testPlanItemId
-  squashExecMap = new Map<number, number>(); // tcId → squashExecutionId
+  squashExecMap = new Map<number, number>();
 
-  get execCurrentTc(): SquashTc | null { return this.execQueue[this.execCurrentIdx]?.tc ?? null; }
-  get execCurrentSteps(): SquashStep[] { return this.execCurrentTc?.steps ?? []; }
+  // ── Historique ────────────────────────────────────
+  historySessions: any[] = [];
+  historyLoading = false;
+  historyDetail: any = null;
+  historyDetailLoading = false;
+  aiAnalysis: any = null;
+  aiAnalyzing = false;
+  aiError = '';
+
+  get execCurrentTc(): TreeNode | null { return this.execQueue[this.execCurrentIdx]?.tc ?? null; }
+  get execCurrentSteps(): SquashStep[] { return (this.execCurrentTc?.steps as SquashStep[]) ?? []; }
   get execCurrentStep(): SquashStep | null { return this.execCurrentSteps[this.execStepIdx] ?? null; }
   get execProgress(): number {
     return this.execQueue.length
@@ -134,7 +160,7 @@ export class ExecutionPageComponent implements OnInit {
     this.squashService.clearCredentials();
     this.squashConfigured = false;
     this.projects = [];
-    this.testCases = [];
+    this.treeRoots = [];
     this.selectedProjectId = null;
     this.selectedTcIds = new Set();
   }
@@ -142,39 +168,72 @@ export class ExecutionPageComponent implements OnInit {
   // ── Chargement ────────────────────────────────────
   loadProjects(): void {
     this.projectsLoading = true;
+    this.projectsError = '';
     this.squashService.getProjects().subscribe({
       next: (p) => { this.projects = p; this.projectsLoading = false; },
-      error: () => { this.projectsLoading = false; },
+      error: (err: any) => {
+        this.projectsError = err?.error?.error || 'Erreur chargement des projets';
+        this.projectsLoading = false;
+      },
     });
   }
 
   selectProject(id: number): void {
+    if (this.selectedProjectId === id) return;
     this.selectedProjectId = id;
-    this.testCases = [];
+    this.treeRoots = [];
     this.selectedTcIds = new Set();
-    this.tcsLoading = true;
-    this.tcsError = '';
-    this.http.get<SquashTc[]>(`${this.apiUrl}/projects/${id}/test-cases`, { headers: this.squashHeaders }).subscribe({
-      next: (tcs) => { this.testCases = tcs; this.tcsLoading = false; },
-      error: (err: any) => { this.tcsError = err?.error?.error || 'Erreur chargement'; this.tcsLoading = false; },
+    this.searchTerm = '';
+    this.treeLoading = true;
+    this.treeError = '';
+    this.http.get<TreeNode[]>(`${this.apiUrl}/projects/${id}/library`, { headers: this.squashHeaders }).subscribe({
+      next: (nodes) => { this.treeRoots = nodes; this.treeLoading = false; },
+      error: (err: any) => { this.treeError = err?.error?.error || 'Erreur chargement'; this.treeLoading = false; },
     });
   }
 
+  // ── Arbre — expand/collapse ───────────────────────
+  toggleFolder(node: TreeNode): void {
+    if (node.type !== 'folder') return;
+    if (node.expanded) { node.expanded = false; return; }
+    node.expanded = true;
+    if (node.loaded) return;
+    node.loading = true;
+    this.http.get<TreeNode[]>(`${this.apiUrl}/folders/${node.id}/content`, { headers: this.squashHeaders }).subscribe({
+      next: (children) => { node.children = children; node.loading = false; node.loaded = true; },
+      error: () => { node.loading = false; node.loaded = true; node.children = []; },
+    });
+  }
+
+  // ── Sélection ─────────────────────────────────────
   toggleTc(id: number): void {
     const s = new Set(this.selectedTcIds);
     s.has(id) ? s.delete(id) : s.add(id);
     this.selectedTcIds = s;
   }
 
-  toggleAll(): void {
-    if (this.selectedTcIds.size === this.filteredTcs.length) {
-      this.selectedTcIds = new Set();
-    } else {
-      this.selectedTcIds = new Set(this.filteredTcs.map(tc => tc.id));
-    }
+  toggleFolder_select(node: TreeNode): void {
+    const tcs = this.collectTcs(node);
+    const allSelected = tcs.every(tc => this.selectedTcIds.has(tc.id));
+    const s = new Set(this.selectedTcIds);
+    if (allSelected) tcs.forEach(tc => s.delete(tc.id));
+    else tcs.forEach(tc => s.add(tc.id));
+    this.selectedTcIds = s;
   }
 
-  importanceClass(imp: string): string {
+  folderSelectionState(node: TreeNode): 'all' | 'some' | 'none' {
+    const tcs = this.collectTcs(node);
+    if (tcs.length === 0) return 'none';
+    const sel = tcs.filter(tc => this.selectedTcIds.has(tc.id)).length;
+    return sel === tcs.length ? 'all' : sel > 0 ? 'some' : 'none';
+  }
+
+  private collectTcs(node: TreeNode): TreeNode[] {
+    if (node.type === 'tc') return [node];
+    return (node.children || []).flatMap(c => this.collectTcs(c));
+  }
+
+  importanceClass(imp?: string): string {
     return imp === 'HIGH' ? 'high' : imp === 'LOW' ? 'low' : 'medium';
   }
 
@@ -183,39 +242,34 @@ export class ExecutionPageComponent implements OnInit {
     if (this.selectedTcIds.size === 0) return;
     this.execLaunching = true;
 
-    const selectedTcs = this.testCases.filter(tc => this.selectedTcIds.has(tc.id));
-
-    // Charger les steps de chaque TC sélectionné
+    const selectedTcs = this.allTcs.filter(tc => this.selectedTcIds.has(tc.id));
     let loaded = 0;
-    const total = selectedTcs.length;
 
     selectedTcs.forEach(tc => {
-      this.http.get<SquashTc>(`${this.apiUrl}/test-cases/${tc.id}`, { headers: this.squashHeaders }).subscribe({
+      this.http.get<any>(`${this.apiUrl}/test-cases/${tc.id}`, { headers: this.squashHeaders }).subscribe({
         next: (detail) => {
           tc.steps = detail.steps || [];
-          loaded++;
-          if (loaded === total) this.startSession(selectedTcs);
+          if (++loaded === selectedTcs.length) this.startSession(selectedTcs);
         },
         error: () => {
           tc.steps = [];
-          loaded++;
-          if (loaded === total) this.startSession(selectedTcs);
+          if (++loaded === selectedTcs.length) this.startSession(selectedTcs);
         },
       });
     });
   }
 
-  private startSession(tcs: SquashTc[]): void {
+  private startSession(tcs: TreeNode[]): void {
     const sessionName = `Exécution Squash — ${new Date().toLocaleDateString('fr-FR')} ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    const projectName = this.projects.find(p => p.id === this.selectedProjectId)?.name || '';
 
-    // Créer la session + campagne Squash
     this.http.post<{ session: ExecutionSession; executions: Execution[]; squashCampaignId?: number }>(
       `${environment.apiUrl}/api/executions/sessions`,
       {
-        tcIds: [],  // pas de DB tc_ids ici, on crée quand même une session pour le suivi
         sessionName,
         squashProjectId: this.selectedProjectId,
-        squashTcIds: tcs.map(tc => tc.id),
+        squashProjectName: projectName,
+        squashTcs: tcs.map(tc => ({ id: tc.id, name: tc.name, importance: tc.importance || 'MEDIUM' })),
       },
       { headers: this.squashHeaders }
     ).subscribe({
@@ -223,37 +277,52 @@ export class ExecutionPageComponent implements OnInit {
         this.execSession = res.session;
         this.squashCampaignId = res.squashCampaignId ?? null;
         this.execQueue = tcs.map(tc => ({ tc }));
-        this.execCurrentIdx = 0;
-        this.execStepIdx = 0;
-        this.execStepResults = new Map();
-        this.execIframeUrl = 'about:blank';
-        this.execCommentOpen = false;
-        this.execPendingStatus = null;
-        this.execPendingComment = '';
+        this.resetExecState();
         this.execLaunching = false;
         this.view = 'running';
       },
       error: () => {
-        // Démarrer quand même sans session DB
         this.execSession = null;
         this.execQueue = tcs.map(tc => ({ tc }));
-        this.execCurrentIdx = 0;
-        this.execStepIdx = 0;
-        this.execStepResults = new Map();
-        this.execIframeUrl = 'about:blank';
+        this.resetExecState();
         this.execLaunching = false;
         this.view = 'running';
       },
     });
   }
 
+  private resetExecState(): void {
+    this.execCurrentIdx = 0;
+    this.execStepIdx = 0;
+    this.execStepResults = new Map();
+    this.execIframeUrl = 'about:blank';
+    this.execCommentOpen = false;
+    this.execPendingStatus = null;
+    this.execPendingComment = '';
+  }
+
   // ── Navigation iframe ─────────────────────────────
   execNavigateIframe(url: string): void {
     this.execIframeUrl = url.startsWith('http') ? url : 'https://' + url;
+    this.execIframeBlocked = false;
   }
 
   execResetIframe(): void {
     this.execIframeUrl = 'about:blank';
+    this.execIframeBlocked = false;
+  }
+
+  onIframeLoad(event: Event): void {
+    if (this.execIframeUrl === 'about:blank') return;
+    try {
+      const iframe = event.target as HTMLIFrameElement;
+      // Si le document est accessible, le site n'est pas bloqué
+      void iframe.contentDocument?.title;
+      this.execIframeBlocked = false;
+    } catch {
+      // SecurityError = cross-origin, mais ça veut dire que ça a chargé
+      this.execIframeBlocked = false;
+    }
   }
 
   // ── Gestion steps ─────────────────────────────────
@@ -274,14 +343,13 @@ export class ExecutionPageComponent implements OnInit {
     this.execStepResults.set(step.id, { status, comment: comment || '' });
     this.execPendingComment = '';
 
-    // Màj Squash step (non bloquant)
     const tc = this.execCurrentTc!;
     const squashExecId = this.squashExecMap.get(tc.id);
     if (squashExecId) {
-      const squashStatus = status === 'passed' ? 'SUCCESS' : status === 'failed' ? 'FAILURE' : 'BLOCKED';
+      const sq = status === 'passed' ? 'SUCCESS' : status === 'failed' ? 'FAILURE' : 'BLOCKED';
       this.http.patch(
         `${this.apiUrl}/execution-steps/${step.id}`,
-        { status: squashStatus, comment, squashExecId },
+        { status: sq, comment, squashExecId },
         { headers: this.squashHeaders }
       ).subscribe({ error: () => {} });
     }
@@ -291,16 +359,12 @@ export class ExecutionPageComponent implements OnInit {
 
   private execAdvance(): void {
     const steps = this.execCurrentSteps;
-    if (this.execStepIdx < steps.length - 1) {
-      this.execStepIdx++;
-      return;
-    }
-    // Fin du TC — calculer statut global
+    if (this.execStepIdx < steps.length - 1) { this.execStepIdx++; return; }
+
     const results = steps.map(s => this.execStepResults.get(s.id)?.status || 'pending');
     const globalStatus = results.includes('failed') ? 'failed'
       : results.includes('blocked') ? 'blocked' : 'passed';
 
-    // Màj Squash execution
     const tc = this.execCurrentTc!;
     const squashExecId = this.squashExecMap.get(tc.id);
     if (squashExecId) {
@@ -313,10 +377,7 @@ export class ExecutionPageComponent implements OnInit {
   }
 
   private execNextTc(globalStatus: string): void {
-    // Enregistrer le résultat du TC courant
-    const item = this.execQueue[this.execCurrentIdx];
-    (item as any).globalStatus = globalStatus;
-
+    (this.execQueue[this.execCurrentIdx] as any).globalStatus = globalStatus;
     if (this.execCurrentIdx < this.execQueue.length - 1) {
       this.execCurrentIdx++;
       this.execStepIdx = 0;
@@ -328,22 +389,82 @@ export class ExecutionPageComponent implements OnInit {
   }
 
   private finishSession(): void {
-    const executions = this.execQueue.map((item: any) => ({
-      tc_title: item.tc.name,
-      priority: item.tc.importance || 'MEDIUM',
-      global_status: item.globalStatus || 'pending',
+    const results = this.execQueue.map((item: any) => ({
+      squashTcId: item.tc.id,
+      tcTitle: item.tc.name,
+      tcImportance: item.tc.importance || 'MEDIUM',
+      globalStatus: item.globalStatus || 'pending',
     }));
 
-    const passed = executions.filter(e => e.global_status === 'passed').length;
-    const failed = executions.filter(e => e.global_status === 'failed').length;
-    const blocked = executions.filter(e => e.global_status === 'blocked').length;
+    const passed = results.filter(e => e.globalStatus === 'passed').length;
+    const failed = results.filter(e => e.globalStatus === 'failed').length;
+    const blocked = results.filter(e => e.globalStatus === 'blocked').length;
+
+    const session = this.execSession || { id: '', name: 'Session', started_at: new Date().toISOString(), status: 'completed' };
 
     this.execReport = {
-      session: this.execSession || { id: '', name: 'Session', started_at: new Date().toISOString(), status: 'completed' },
-      executions: executions as any,
-      report: { total: executions.length, passed, failed, blocked, pending: 0, duration: 0 },
+      session,
+      executions: results.map(r => ({ tc_title: r.tcTitle, priority: r.tcImportance, global_status: r.globalStatus })) as any,
+      report: { total: results.length, passed, failed, blocked, pending: 0, duration: 0 },
     };
+    this.aiAnalysis = null;
     this.view = 'report';
+
+    // Persister les résultats en DB
+    if (session.id) {
+      this.http.post(`${environment.apiUrl}/api/executions/sessions/${session.id}/complete`, { results })
+        .subscribe({ error: () => {} });
+    }
+  }
+
+  // ── Historique ────────────────────────────────────
+  loadHistory(): void {
+    this.view = 'history';
+    this.historyLoading = true;
+    this.http.get<any[]>(`${environment.apiUrl}/api/executions/sessions`).subscribe({
+      next: (s) => { this.historySessions = s; this.historyLoading = false; },
+      error: () => { this.historyLoading = false; },
+    });
+  }
+
+  openHistoryDetail(session: any): void {
+    this.historyDetail = null;
+    this.aiAnalysis = null;
+    this.view = 'history-detail';
+    this.historyDetailLoading = true;
+    this.http.get<any>(`${environment.apiUrl}/api/executions/sessions/${session.id}/report`).subscribe({
+      next: (data) => {
+        this.historyDetail = data;
+        this.aiAnalysis = data.aiAnalysis || null;
+        this.historyDetailLoading = false;
+      },
+      error: () => { this.historyDetailLoading = false; },
+    });
+  }
+
+  analyzeWithAI(): void {
+    if (!this.historyDetail?.session?.id && !this.execSession?.id) return;
+    const sessionId = this.historyDetail?.session?.id || this.execSession?.id;
+    this.aiAnalyzing = true;
+    this.aiError = '';
+    this.http.post<any>(`${environment.apiUrl}/api/executions/sessions/${sessionId}/analyze`, {}).subscribe({
+      next: (analysis) => { this.aiAnalysis = analysis; this.aiAnalyzing = false; },
+      error: (err: any) => { this.aiError = err?.error?.error || 'Erreur analyse IA'; this.aiAnalyzing = false; },
+    });
+  }
+
+  analyzeCurrentReport(): void {
+    if (!this.execSession?.id) return;
+    this.aiAnalyzing = true;
+    this.aiError = '';
+    this.http.post<any>(`${environment.apiUrl}/api/executions/sessions/${this.execSession.id}/analyze`, {}).subscribe({
+      next: (analysis) => { this.aiAnalysis = analysis; this.aiAnalyzing = false; },
+      error: (err: any) => { this.aiError = err?.error?.error || 'Erreur analyse IA'; this.aiAnalyzing = false; },
+    });
+  }
+
+  verdictClass(v: string): string {
+    return v === 'OK' ? 'ok' : v === 'KO' ? 'ko' : 'partiel';
   }
 
   execAbort(): void {
@@ -353,9 +474,7 @@ export class ExecutionPageComponent implements OnInit {
     this.execResetIframe();
   }
 
-  goBack(): void {
-    this.router.navigate(['/']);
-  }
+  goBack(): void { this.router.navigate(['/']); }
 
   priorityClass(p: string): string {
     if (!p) return '';

@@ -43,6 +43,8 @@ CREATE TABLE IF NOT EXISTS execution_sessions (
   ended_at TIMESTAMP,
   status VARCHAR(20) DEFAULT 'in_progress',
   squash_campaign_id VARCHAR(100),
+  squash_project_id INTEGER,
+  squash_project_name TEXT,
   notes TEXT
 );
 
@@ -51,6 +53,9 @@ CREATE TABLE IF NOT EXISTS executions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID REFERENCES execution_sessions(id) ON DELETE CASCADE,
   test_case_id UUID REFERENCES test_cases(id) ON DELETE CASCADE,
+  squash_tc_id INTEGER,
+  tc_title TEXT,
+  tc_importance TEXT,
   started_at TIMESTAMP DEFAULT NOW(),
   ended_at TIMESTAMP,
   executed_at TIMESTAMP DEFAULT NOW(),

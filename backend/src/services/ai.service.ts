@@ -44,6 +44,8 @@ const callGroq = async (prompt: string, attempt = 1): Promise<string> => {
   }
 };
 
+export const callGroqRaw = (prompt: string): Promise<string> => callGroq(prompt);
+
 const parseJson = (content: string): any => {
   try { return JSON.parse(content); }
   catch { return JSON.parse(content.replace(/```json|```/g, '').trim()); }
